@@ -34,8 +34,14 @@ X and Google client IDs and secrets are entered in the Supabase dashboard (Authe
 
 ## Security rules we follow
 
+
+
+
 - The browser never decides who is an admin. Roles live in the database and are checked on the server for every request.
 - Admin access also needs an 8-hour signed admin pass, which can be revoked.
 - The OWNER cannot be changed, suspended, banned or deleted, and the database enforces this.
 - The audit log is append-only.
 - The Supabase secret key is only used in server-only files.
+
+
+
