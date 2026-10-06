@@ -1,36 +1,65 @@
+import Link from "next/link";
+import { redirect } from "next/navigation";
+import Avatar from "@/components/Avatar";
 import { requireUser } from "@/lib/auth/guards";
+import { getMyPlayer } from "@/lib/game/player";
+import { INTERESTS } from "@/lib/game/options";
+import { formatNaira } from "@/lib/money";
 import { createClient } from "@/lib/supabase/server";
 
 export default async function WelcomePage() {
   await requireUser();
 
+  const player = await getMyPlayer();
+  if (!player) redirect("/create");
+
   const supabase = await createClient();
-  const { data: identities } = await supabase
-    .from("auth_identities")
-    .select("provider, handle");
+  const [{ data: background }, { data: wallet }] = await Promise.all([
+    supabase.from("backgrounds").select("name").eq("slug", player.background_slug).maybeSingle(),
+    supabase.from("wallets").select("balance_kobo").eq("player_id", player.id).maybeSingle(),
+  ]);
+
+  const interest = INTERESTS.find((i) => i.value === player.interest);
 
   return (
     <main className="flex min-h-screen items-center justify-center bg-[#0b1020] px-5 text-white">
       <div className="w-full max-w-sm text-center">
         <p className="text-sm font-semibold tracking-[0.3em] text-amber-400">CAMPUS LIFE</p>
-        <h1 className="mt-3 text-3xl font-extrabold">You are in.</h1>
-        <p className="mt-2 text-sm text-zinc-400">
-          Character creation and the admission journey are coming in Stage 2.
+
+        <Avatar
+          skin={player.avatar_skin}
+          hairStyle={player.avatar_hair_style}
+          hairColor={player.avatar_hair_color}
+          outfit={player.avatar_outfit}
+          className="mx-auto mt-6 h-40 w-40 rounded-3xl bg-gradient-to-b from-white/10 to-white/0"
+        />
+
+        <h1 className="mt-4 text-3xl font-extrabold">{player.display_name}</h1>
+        <p className="mt-1 text-sm text-zinc-400">
+          {player.age} years old · {background?.name}
         </p>
 
-        <div className="mt-6 rounded-2xl border border-white/10 bg-white/5 p-4 text-left text-sm">
-          <p className="mb-2 font-semibold text-zinc-300">Signed in with</p>
-          {identities && identities.length > 0 ? (
-            identities.map((i, n) => (
-              <p key={n} className="text-zinc-400">
-                {i.provider}
-                {i.handle ? ` (@${i.handle})` : ""}
-              </p>
-            ))
-          ) : (
-            <p className="text-zinc-500">No identity recorded yet.</p>
-          )}
+        <div className="mt-6 grid grid-cols-2 gap-3 text-left">
+          <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+            <p className="text-xs text-zinc-500">Wallet</p>
+            <p className="mt-1 text-lg font-extrabold text-emerald-300">
+              {wallet ? formatNaira(wallet.balance_kobo) : "-"}
+            </p>
+          </div>
+          <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+            <p className="text-xs text-zinc-500">Interest</p>
+            <p className="mt-1 text-sm font-bold">
+              {interest?.icon} {interest?.label}
+            </p>
+          </div>
         </div>
+
+                <Link
+          href="/universities"
+          className="mt-6 block rounded-2xl bg-gradient-to-r from-amber-400 to-orange-500 py-4 text-base font-extrabold text-black active:scale-95"
+        >
+          Explore universities
+        </Link>
 
         <form action="/auth/signout" method="post" className="mt-6">
           <button

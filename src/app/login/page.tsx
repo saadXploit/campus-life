@@ -10,6 +10,8 @@ function errorMessage(code?: string): string | null {
       return "Sign-in failed. Please try again.";
     case "suspended":
       return "This account is not allowed to sign in.";
+          case "too_many":
+      return "Too many attempts. Please wait a few minutes and try again.";
     default:
       return null;
   }
