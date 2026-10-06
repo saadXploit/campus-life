@@ -60,6 +60,12 @@ export default async function WelcomePage() {
         >
           Explore universities
         </Link>
+                <Link
+          href="/apply"
+          className="mt-3 block rounded-2xl border border-amber-400/60 py-4 text-base font-extrabold text-amber-300 active:scale-95"
+        >
+          Apply for admission
+        </Link>
 
         <form action="/auth/signout" method="post" className="mt-6">
           <button

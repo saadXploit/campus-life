@@ -77,3 +77,42 @@ export async function getUniversity(
     faculties: (faculties ?? []) as unknown as FacultyWithCourses[],
   };
 }
+export const INTEREST_FACULTY: Record<string, string> = {
+  science: "Faculty of Science",
+  engineering: "Faculty of Engineering",
+  health: "Faculty of Health Sciences",
+  social: "Faculty of Social Sciences",
+  arts: "Faculty of Arts",
+  law: "Faculty of Law",
+  management: "Faculty of Management Sciences",
+};
+
+export type CatalogCourse = { code: string; name: string; duration_years: number };
+
+/** Every distinct course, grouped by faculty (each university offers the same list). */
+export async function listCourseCatalog(): Promise<
+  { faculty: string; courses: CatalogCourse[] }[]
+> {
+  const supabase = await createClient();
+  const { data } = await supabase
+    .from("faculties")
+    .select("name, departments(courses(code, name, duration_years))");
+
+  const grouped = new Map<string, Map<string, CatalogCourse>>();
+  const rows = (data ?? []) as unknown as {
+    name: string;
+    departments: { courses: CatalogCourse[] }[];
+  }[];
+
+  for (const f of rows) {
+    const inner = grouped.get(f.name) ?? new Map<string, CatalogCourse>();
+    for (const d of f.departments) {
+      for (const c of d.courses) inner.set(c.code, c);
+    }
+    grouped.set(f.name, inner);
+  }
+
+  return [...grouped.entries()]
+    .map(([faculty, courses]) => ({ faculty, courses: [...courses.values()] }))
+    .sort((a, b) => a.faculty.localeCompare(b.faculty));
+}

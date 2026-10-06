@@ -119,9 +119,12 @@ export default async function UniversityPage({
           </div>
         </div>
 
-        <p className="rounded-2xl border border-dashed border-white/15 p-4 text-center text-sm text-zinc-400">
-          Applications open in the next update.
-        </p>
+                <Link
+          href="/apply"
+          className="block rounded-2xl bg-gradient-to-r from-amber-400 to-orange-500 py-4 text-center text-base font-extrabold text-black active:scale-95"
+        >
+          Apply for admission
+        </Link>
       </div>
     </main>
   );
