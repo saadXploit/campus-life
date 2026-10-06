@@ -1,36 +1,41 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# CAMPUS LIFE
 
-## Getting Started
+A multiplayer university life-simulation game. Next.js (App Router) + TypeScript + Tailwind + Framer Motion, with Supabase (PostgreSQL + Auth).
 
-First, run the development server:
+## Status
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
-```
+Stage 1 (foundation): X and Google login for players, X-only admin login, OWNER / SUPER_ADMIN / ADMIN / MODERATOR roles, staff invites and management, audit log, admin session limits, rate limiting, security headers.
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## Run it on your computer
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+1. Install Node.js 22 LTS and Git.
+2. npm install
+3. Copy .env.example to .env.local and fill in the values (see below).
+4. Run the SQL files in supabase/migrations in order, using the Supabase SQL Editor.
+5. npm run dev, then open http://localhost:3000
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## Settings (.env.local, never commit this file)
 
-## Learn More
+- NEXT_PUBLIC_SITE_URL: http://localhost:3000 while developing
+- NEXT_PUBLIC_SUPABASE_URL: Supabase project URL (no path at the end)
+- NEXT_PUBLIC_SUPABASE_ANON_KEY: Supabase publishable key
+- SUPABASE_SERVICE_ROLE_KEY: Supabase secret key. Server only.
+- ADMIN_SESSION_SECRET: random 64-character hex string. Generate with: node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
+- OWNER_X_USER_ID: the owner's numeric X account ID (not the username)
 
-To learn more about Next.js, take a look at the following resources:
+X and Google client IDs and secrets are entered in the Supabase dashboard (Authentication, Providers), not in this project.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Checks
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+- npx tsc --noEmit : type check
+- npm run lint : code style
+- npm test : automated tests
+- npm run build : production build
 
-## Deploy on Vercel
+## Security rules we follow
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+- The browser never decides who is an admin. Roles live in the database and are checked on the server for every request.
+- Admin access also needs an 8-hour signed admin pass, which can be revoked.
+- The OWNER cannot be changed, suspended, banned or deleted, and the database enforces this.
+- The audit log is append-only.
+- The Supabase secret key is only used in server-only files.
