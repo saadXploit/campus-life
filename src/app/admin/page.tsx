@@ -1,5 +1,7 @@
+import Link from "next/link";
 import { requireStaff } from "@/lib/auth/guards";
 import { getXIdentity } from "@/lib/auth/staff";
+import { can } from "@/lib/auth/roles";
 
 export default async function AdminHomePage() {
   const { user, role } = await requireStaff();
@@ -21,8 +23,22 @@ export default async function AdminHomePage() {
           </p>
         </div>
 
+        <div className="mt-6 grid gap-3">
+          {can(role, "audit.view") && (
+            <Link
+              href="/admin/audit"
+              className="rounded-2xl border border-white/10 bg-white/5 p-4 font-semibold hover:bg-white/10"
+            >
+              Audit log
+              <span className="block text-sm font-normal text-zinc-400">
+                See every recorded admin action
+              </span>
+            </Link>
+          )}
+        </div>
+
         <p className="mt-6 text-sm text-zinc-500">
-          Staff management, the audit log viewer, and moderation tools arrive in the next steps.
+          Staff management and moderation tools arrive in the next steps.
         </p>
 
         <form action="/auth/signout" method="post" className="mt-8">
