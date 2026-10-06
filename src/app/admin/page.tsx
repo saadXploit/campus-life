@@ -7,6 +7,9 @@ export default async function AdminHomePage() {
   const { user, role } = await requireStaff();
   const handle = getXIdentity(user)?.handle;
 
+  const card =
+    "rounded-2xl border border-white/10 bg-white/5 p-4 font-semibold hover:bg-white/10";
+
   return (
     <main className="min-h-screen bg-[#070a14] px-5 py-10 text-white">
       <div className="mx-auto max-w-2xl">
@@ -24,11 +27,16 @@ export default async function AdminHomePage() {
         </div>
 
         <div className="mt-6 grid gap-3">
+          {can(role, "staff.manage") && (
+            <Link href="/admin/staff" className={card}>
+              Staff
+              <span className="block text-sm font-normal text-zinc-400">
+                See the team and invite new staff
+              </span>
+            </Link>
+          )}
           {can(role, "audit.view") && (
-            <Link
-              href="/admin/audit"
-              className="rounded-2xl border border-white/10 bg-white/5 p-4 font-semibold hover:bg-white/10"
-            >
+            <Link href="/admin/audit" className={card}>
               Audit log
               <span className="block text-sm font-normal text-zinc-400">
                 See every recorded admin action
@@ -38,7 +46,7 @@ export default async function AdminHomePage() {
         </div>
 
         <p className="mt-6 text-sm text-zinc-500">
-          Staff management and moderation tools arrive in the next steps.
+          Staff removal and moderation tools arrive in the next steps.
         </p>
 
         <form action="/auth/signout" method="post" className="mt-8">

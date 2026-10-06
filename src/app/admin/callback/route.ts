@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { getCurrentUser, getStaffRole } from "@/lib/auth/guards";
 import { syncIdentities } from "@/lib/auth/identities";
 import { bootstrapOwnerIfEligible, getXIdentity } from "@/lib/auth/staff";
+import { redeemInvite } from "@/lib/auth/invites";
 import { logAdminAction } from "@/lib/auth/audit";
 
 /** Where X sends admins back after they approve the login. */
@@ -12,7 +13,9 @@ export async function GET(request: NextRequest) {
   const refuse = (code: string) =>
     NextResponse.redirect(`${site}/admin/login?error=${code}`);
 
-  const code = new URL(request.url).searchParams.get("code");
+  const params = new URL(request.url).searchParams;
+  const code = params.get("code");
+  const inviteToken = params.get("invite");
   if (!code) return refuse("failed");
 
   const supabase = await createClient();
@@ -36,7 +39,14 @@ export async function GET(request: NextRequest) {
   // Creates the OWNER only if the verified X ID matches the server setting.
   await bootstrapOwnerIfEligible(user);
 
-  const role = await getStaffRole(user.id);
+  let role = await getStaffRole(user.id);
+
+  // Not staff yet? A valid one-time invite can make them staff.
+  if (!role && inviteToken) {
+    await redeemInvite(user, inviteToken);
+    role = await getStaffRole(user.id);
+  }
+
   if (!role) {
     await supabase.auth.signOut();
     return refuse("not_authorised");
