@@ -6,6 +6,7 @@ import { syncIdentities } from "@/lib/auth/identities";
 import { bootstrapOwnerIfEligible, getXIdentity } from "@/lib/auth/staff";
 import { redeemInvite } from "@/lib/auth/invites";
 import { logAdminAction } from "@/lib/auth/audit";
+import { startAdminSession } from "@/lib/auth/admin-session";
 
 /** Where X sends admins back after they approve the login. */
 export async function GET(request: NextRequest) {
@@ -51,6 +52,9 @@ export async function GET(request: NextRequest) {
     await supabase.auth.signOut();
     return refuse("not_authorised");
   }
+
+  // Hand out the 8-hour admin pass.
+  await startAdminSession(user.id);
 
   await logAdminAction({
     actorUserId: user.id,

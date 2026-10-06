@@ -107,7 +107,8 @@ export async function redeemInvite(user: User, token: string): Promise<RedeemRes
     user_id: user.id,
     role: claimed.role,
     status: "active",
-    granted_by: claimed.invited_by,
+        granted_by: claimed.invited_by,
+    sessions_valid_after: new Date().toISOString(),
   });
   if (error) return "failed";
 

@@ -4,6 +4,7 @@ import type { User } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { hasMinRole, isStaffRole, type StaffRole } from "./roles";
+import { hasValidAdminSession } from "./admin-session";
 
 /**
  * The signed-in player, verified with Supabase's auth server.
@@ -49,8 +50,11 @@ export async function getStaffRole(userId: string): Promise<StaffRole | null> {
 }
 
 /**
- * Page/action guard for staff. Everyone who is not authorised is sent
- * to /admin/login. The role always comes from the database, never the browser.
+ * Page/action guard for staff. Three things must all be true:
+ *  1. a valid, active login,
+ *  2. an active staff role in the database of at least the needed level,
+ *  3. a valid, unexpired, unrevoked admin pass.
+ * Everything else is sent to /admin/login.
  */
 export async function requireStaff(
   minRole: StaffRole = "MODERATOR"
@@ -60,6 +64,8 @@ export async function requireStaff(
 
   const role = await getStaffRole(user.id);
   if (!role || !hasMinRole(role, minRole)) redirect("/admin/login");
+
+  if (!(await hasValidAdminSession(user.id))) redirect("/admin/login");
 
   return { user, role };
 }

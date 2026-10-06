@@ -11,6 +11,7 @@ const serverEnvSchema = z.object({
   NEXT_PUBLIC_SUPABASE_URL: z.string().url(),
   NEXT_PUBLIC_SUPABASE_ANON_KEY: z.string().min(20),
   SUPABASE_SERVICE_ROLE_KEY: z.string().min(20),
+  ADMIN_SESSION_SECRET: z.string().min(32),
   // Optional on purpose: if it is empty, nobody can become OWNER.
   OWNER_X_USER_ID: z
     .string()
@@ -32,6 +33,7 @@ export function getServerEnv(): ServerEnv {
     NEXT_PUBLIC_SUPABASE_URL: process.env.NEXT_PUBLIC_SUPABASE_URL,
     NEXT_PUBLIC_SUPABASE_ANON_KEY: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
     SUPABASE_SERVICE_ROLE_KEY: process.env.SUPABASE_SERVICE_ROLE_KEY,
+    ADMIN_SESSION_SECRET: process.env.ADMIN_SESSION_SECRET,
     OWNER_X_USER_ID: process.env.OWNER_X_USER_ID,
   });
 
