@@ -1,8 +1,14 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 
-export default function Countdown({ target }: { target: string }) {
+export default function Countdown({
+  target,
+  children,
+}: {
+  target: string;
+  children?: ReactNode;
+}) {
   const [left, setLeft] = useState<number | null>(null);
 
   useEffect(() => {
@@ -17,7 +23,7 @@ export default function Countdown({ target }: { target: string }) {
   }, [target]);
 
   if (left === null) return <span>...</span>;
-  if (left === 0) return <span className="text-emerald-300">The exam hall is open</span>;
+  if (left === 0) return <>{children}</>;
 
   const minutes = Math.floor(left / 60);
   const seconds = left % 60;

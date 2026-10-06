@@ -3,8 +3,9 @@ import { createClient } from "@/lib/supabase/server";
 
 export type OpenApplication = {
   id: string;
-  status: string;
+  status: "exam_pending" | "exam_in_progress" | "awaiting_result" | "decided";
   exam_opens_at: string;
+  result_ready_at: string | null;
   application_choices: {
     rank: number;
     universities: {
@@ -25,7 +26,7 @@ export async function getMyOpenApplication(): Promise<OpenApplication | null> {
   const { data } = await supabase
     .from("applications")
     .select(
-      "id, status, exam_opens_at, application_choices(rank, universities(name, short_name, slug, primary_color, secondary_color, tuition_per_semester_kobo), courses(name, code))"
+      "id, status, exam_opens_at, result_ready_at, application_choices(rank, universities(name, short_name, slug, primary_color, secondary_color, tuition_per_semester_kobo), courses(name, code))"
     )
     .neq("status", "decided")
     .maybeSingle();

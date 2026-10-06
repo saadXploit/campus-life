@@ -6,6 +6,9 @@ import { requireUser } from "@/lib/auth/guards";
 import { getMyOpenApplication } from "@/lib/game/applications";
 import { formatNaira } from "@/lib/money";
 
+const primaryButton =
+  "inline-block rounded-2xl bg-gradient-to-r from-amber-400 to-orange-500 px-6 py-3 text-base font-extrabold text-black active:scale-95";
+
 export default async function ApplicationStatusPage() {
   await requireUser();
 
@@ -19,20 +22,67 @@ export default async function ApplicationStatusPage() {
       <div className="w-full max-w-sm">
         <div className="text-center">
           <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-emerald-400/20 text-3xl">
-            ✅
+            {app.status === "awaiting_result" ? "⏳" : "✅"}
           </div>
-          <p className="mt-4 text-xs font-semibold tracking-[0.3em] text-emerald-300">
-            APPLICATION SUBMITTED
-          </p>
-          <h1 className="mt-2 text-2xl font-extrabold">Entrance examination scheduled.</h1>
+
+          {app.status === "exam_pending" && (
+            <>
+              <p className="mt-4 text-xs font-semibold tracking-[0.3em] text-emerald-300">
+                APPLICATION SUBMITTED
+              </p>
+              <h1 className="mt-2 text-2xl font-extrabold">Entrance examination scheduled.</h1>
+            </>
+          )}
+          {app.status === "exam_in_progress" && (
+            <>
+              <p className="mt-4 text-xs font-semibold tracking-[0.3em] text-amber-300">
+                EXAM IN PROGRESS
+              </p>
+              <h1 className="mt-2 text-2xl font-extrabold">Your exam is waiting for you.</h1>
+            </>
+          )}
+          {app.status === "awaiting_result" && (
+            <>
+              <p className="mt-4 text-xs font-semibold tracking-[0.3em] text-amber-300">
+                EXAM SUBMITTED
+              </p>
+              <h1 className="mt-2 text-2xl font-extrabold">Your result is on the way.</h1>
+            </>
+          )}
           <p className="mt-2 text-sm text-zinc-400">{courseName}</p>
         </div>
 
         <div className="mt-6 rounded-2xl border border-white/10 bg-white/5 p-5 text-center">
-          <p className="text-xs text-zinc-500">The exam hall opens in</p>
-          <p className="mt-1 text-3xl font-extrabold">
-            <Countdown target={app.exam_opens_at} />
-          </p>
+          {app.status === "exam_pending" && (
+            <>
+              <p className="text-xs text-zinc-500">The exam hall opens in</p>
+              <p className="mt-2 text-3xl font-extrabold">
+                <Countdown target={app.exam_opens_at}>
+                  <Link href="/exam" className={primaryButton}>
+                    Enter the exam hall
+                  </Link>
+                </Countdown>
+              </p>
+            </>
+          )}
+          {app.status === "exam_in_progress" && (
+            <Link href="/exam" className={primaryButton}>
+              Resume exam
+            </Link>
+          )}
+          {app.status === "awaiting_result" && app.result_ready_at && (
+            <>
+              <p className="text-xs text-zinc-500">Your result will be ready in</p>
+              <p className="mt-2 text-3xl font-extrabold">
+                <Countdown target={app.result_ready_at}>
+                  <span className="text-xl text-emerald-300">Your result is ready</span>
+                </Countdown>
+              </p>
+              <p className="mt-3 text-xs text-zinc-500">
+                The result screen arrives in the next update.
+              </p>
+            </>
+          )}
         </div>
 
         <div className="mt-6 space-y-2">
@@ -58,11 +108,10 @@ export default async function ApplicationStatusPage() {
           ))}
         </div>
 
-        <p className="mt-6 rounded-2xl border border-dashed border-white/15 p-4 text-center text-sm text-zinc-400">
-          The exam itself arrives in the next update.
-        </p>
-
-        <Link href="/welcome" className="mt-6 block text-center text-sm text-zinc-400 hover:text-white">
+        <Link
+          href="/welcome"
+          className="mt-6 block text-center text-sm text-zinc-400 hover:text-white"
+        >
           Back to my student
         </Link>
       </div>
