@@ -1,3 +1,4 @@
+import { allowRequest } from "@/lib/rate-limit";
 import OAuthButton from "@/components/OAuthButton";
 import { isInviteUsable } from "@/lib/auth/invites";
 
@@ -7,7 +8,8 @@ export default async function InvitePage({
   params: Promise<{ token: string }>;
 }) {
   const { token } = await params;
-  const usable = await isInviteUsable(token);
+    const usable =
+    (await allowRequest("invite-view", 30, 600)) && (await isInviteUsable(token));
 
   return (
     <main className="flex min-h-screen items-center justify-center bg-[#070a14] px-5 text-white">

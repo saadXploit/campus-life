@@ -83,8 +83,7 @@ export async function setStatusAction(formData: FormData): Promise<void> {
 
   const { error } = await admin
     .from("staff_roles")
-    .update({ status })
-    .eq("user_id", target.user_id);
+        .update({ status, sessions_valid_after: new Date().toISOString() })    .eq("user_id", target.user_id);
   if (error) redirect("/admin/staff?error=failed");
 
   await logAdminAction({

@@ -1,3 +1,4 @@
+import { allowRequest } from "@/lib/rate-limit";
 import { NextResponse, type NextRequest } from "next/server";
 import { getServerEnv } from "@/lib/env";
 import { createClient } from "@/lib/supabase/server";
@@ -13,6 +14,7 @@ export async function GET(request: NextRequest) {
   const site = getServerEnv().NEXT_PUBLIC_SITE_URL;
   const refuse = (code: string) =>
     NextResponse.redirect(`${site}/admin/login?error=${code}`);
+    if (!(await allowRequest("admin-callback", 10, 600))) return refuse("too_many");
 
   const params = new URL(request.url).searchParams;
   const code = params.get("code");

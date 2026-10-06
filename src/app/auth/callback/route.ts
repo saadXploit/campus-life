@@ -1,3 +1,4 @@
+import { allowRequest } from "@/lib/rate-limit";
 import { NextResponse, type NextRequest } from "next/server";
 import { getServerEnv } from "@/lib/env";
 import { createClient } from "@/lib/supabase/server";
@@ -7,6 +8,9 @@ import { syncIdentities } from "@/lib/auth/identities";
 /** Where X / Google send the player back after they approve the login. */
 export async function GET(request: NextRequest) {
   const site = getServerEnv().NEXT_PUBLIC_SITE_URL;
+    if (!(await allowRequest("player-callback", 30, 600))) {
+    return NextResponse.redirect(`${site}/login?error=too_many`);
+  }
   const params = new URL(request.url).searchParams;
   const code = params.get("code");
 

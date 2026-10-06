@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import OAuthButton from "@/components/OAuthButton";
 import { getCurrentUser, getStaffRole } from "@/lib/auth/guards";
+import { hasValidAdminSession } from "@/lib/auth/admin-session";
 
 export default async function AdminLoginPage({
   searchParams,
@@ -8,15 +9,23 @@ export default async function AdminLoginPage({
   searchParams: Promise<{ error?: string }>;
 }) {
   const user = await getCurrentUser();
-  if (user && (await getStaffRole(user.id))) redirect("/admin");
+  if (
+    user &&
+    (await getStaffRole(user.id)) &&
+    (await hasValidAdminSession(user.id))
+  ) {
+    redirect("/admin");
+  }
 
   const { error } = await searchParams;
   const message =
     error === "not_authorised"
       ? "This account is not authorised for the admin portal."
-      : error
-        ? "Sign-in failed. Please try again."
-        : null;
+            : error === "too_many"
+        ? "Too many attempts. Please wait a few minutes and try again."
+        : error
+          ? "Sign-in failed. Please try again."
+          : null;
 
   return (
     <main className="flex min-h-screen items-center justify-center bg-[#070a14] px-5 text-white">

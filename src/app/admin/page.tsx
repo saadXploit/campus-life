@@ -2,6 +2,7 @@ import Link from "next/link";
 import { requireStaff } from "@/lib/auth/guards";
 import { getXIdentity } from "@/lib/auth/staff";
 import { can } from "@/lib/auth/roles";
+import { revokeMySessionsAction } from "./session-actions";
 
 export default async function AdminHomePage() {
   const { user, role } = await requireStaff();
@@ -46,17 +47,28 @@ export default async function AdminHomePage() {
         </div>
 
         <p className="mt-6 text-sm text-zinc-500">
-          Staff removal and moderation tools arrive in the next steps.
+          Admin sessions last 8 hours. Moderation tools arrive in a later stage.
         </p>
 
-        <form action="/auth/signout" method="post" className="mt-8">
-          <button
-            type="submit"
-            className="rounded-xl border border-white/20 px-5 py-2 text-sm text-zinc-300 hover:bg-white/10"
-          >
-            Sign out
-          </button>
-        </form>
+        <div className="mt-8 flex flex-wrap gap-3">
+          <form action="/auth/signout" method="post">
+            <button
+              type="submit"
+              className="rounded-xl border border-white/20 px-5 py-2 text-sm text-zinc-300 hover:bg-white/10"
+            >
+              Sign out
+            </button>
+          </form>
+
+          <form action={revokeMySessionsAction}>
+            <button
+              type="submit"
+              className="rounded-xl border border-red-500/40 px-5 py-2 text-sm text-red-300 hover:bg-red-500/10"
+            >
+              Sign out of all admin sessions
+            </button>
+          </form>
+        </div>
       </div>
     </main>
   );
