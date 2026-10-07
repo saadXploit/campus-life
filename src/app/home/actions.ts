@@ -20,6 +20,7 @@ const ERRORS: Record<string, string> = {
   "slow down": "Slow down a little and try again.",
   "unknown location": "That place does not exist.",
   blocked: "This account cannot play right now.",
+  curfew: "Curfew! The gate is locked and you cannot pay the gate fine.",
 };
 
 async function call(fn: string, args: Record<string, unknown>): Promise<ActionResult> {

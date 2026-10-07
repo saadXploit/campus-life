@@ -35,6 +35,18 @@ export const TYPE_LABEL: Record<University["type"], string> = {
   private: "Private",
 };
 
+/** How each kind of university feels to play. Matches the rules on the server. */
+export const TYPE_PERKS: Record<University["type"], string[]> = {
+  federal: ["Lowest fees", "Big, crowded classes", "Lecturers can go on strike"],
+  state: ["Moderate fees", "Friendly, local feel", "Strikes are possible"],
+  private: [
+    "Highest fees",
+    "Small classes: a small boost in exams",
+    "Curfew 11 PM to 5 AM: ₦2,000 gate fine to leave the hostel",
+    "No strikes",
+  ],
+};
+
 /** A friendly hint only. The real entry scores stay on the server. */
 export function competitiveness(difficulty: number): string {
   if (difficulty >= 8) return "Very competitive";

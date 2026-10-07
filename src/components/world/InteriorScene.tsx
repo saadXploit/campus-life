@@ -342,12 +342,12 @@ function LibraryRoom({ primary }: { primary: string }) {
   );
 }
 
-function FacultyRoom({ primary }: { primary: string }) {
+function FacultyRoom({ primary, board }: { primary: string; board: string }) {
   return (
     <>
       <Shell wall="#e5e7eb" floor="#9ca3af" />
       <B p={[0, 1.8, -3.92]} s={[4.4, 1.6, 0.06]} c="#9ca3af" />
-      <WallText text="CSC 101 · Introduction to Computing" p={[0, 1.8, -3.87]} w={4.2} bg="#ffffff" fg="#1e293b" />
+      <WallText text={board} p={[0, 1.8, -3.87]} w={4.2} bg="#ffffff" fg="#1e293b" />
       <Table x={-3} z={-2.7} w={1.6} d={0.8} c={primary} />
       {[-2.6, -0.6, 1.4].map((x) =>
         [-1.2, 0.2].map((z) => (
@@ -560,6 +560,7 @@ export default function InteriorScene({
   selfPose,
   onSelectPerson,
   song,
+  board,
 }: {
   kind: string;
   avatar: WorldAvatar;
@@ -575,6 +576,8 @@ export default function InteriorScene({
   onSelectPerson: (id: string) => void;
   /** The sponsored song on the club screen, or null for the game's own radio. */
   song: GameAd | null;
+  /** What the lecture-room whiteboard says. */
+  board?: string | null;
 }) {
   const light = lightingFor(hour);
   const club = kind === "clubhouse";
@@ -597,7 +600,7 @@ export default function InteriorScene({
       {kind === "hostel" && <HostelRoom sky={light.sky} primary={primary} />}
       {kind === "cafeteria" && <CafeteriaRoom secondary={secondary} />}
       {kind === "library" && <LibraryRoom primary={primary} />}
-      {kind === "faculty" && <FacultyRoom primary={primary} />}
+      {kind === "faculty" && <FacultyRoom primary={primary} board={board ?? "Welcome to the Faculty"} />}
       {kind === "clubhouse" && <ClubRoom song={song} />}
       {kind === "health" && <HealthRoom />}
 

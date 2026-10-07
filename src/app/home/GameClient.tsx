@@ -37,10 +37,18 @@ import {
   type Pose,
   type Spot,
 } from "@/lib/game/interiors";
+import {
+  academicBusy,
+  nextLectureStart,
+  phaseLabel,
+  slotLabel,
+  type Academics,
+} from "@/lib/game/academics";
 import { lightingFor } from "@/lib/game/lighting";
 import { formatClock, formatDuration, lagosDateLabel, lagosHour } from "@/lib/game/time";
 import { travelEnergy } from "@/lib/game/travel";
 import { formatNaira } from "@/lib/money";
+import AcademicsPanel from "./AcademicsPanel";
 import AdCard from "./AdCard";
 import NotificationsPanel from "./NotificationsPanel";
 import PlayerCard from "./PlayerCard";
@@ -52,6 +60,7 @@ import {
   wakeUpAction,
   type ActionResult,
 } from "./actions";
+import { academicsAction, attendLectureAction, studyAction, writeExamAction } from "./academic-actions";
 import { adViewAction } from "./ad-actions";
 import { blockAction, interactAction, reportAction, sayAction, snapshotAction } from "./social-actions";
 
@@ -85,6 +94,28 @@ function animationFor(a: GameActivity): AvatarAction {
   if (a.location_kind === "sports") return "exercise";
   if (a.slug.includes("hang") || a.location_kind === "clubhouse") return "dance";
   return "busy";
+}
+
+/** Lectures, studying and exams shown like any other activity while they run. */
+function academicActivity(slug: string, kind: string | null): GameActivity | null {
+  const b = academicBusy(slug);
+  if (!b) return null;
+  const minutes = b.kind === "study" ? (kind === "library" ? 3 : 4) : 5;
+  const name =
+    b.kind === "lecture" ? `Lecture: ${b.code}` : b.kind === "exam" ? `Exam: ${b.code}` : `Studying ${b.code}`;
+  return {
+    slug,
+    name,
+    description: "",
+    location_kind: kind ?? "faculty",
+    duration_minutes: minutes,
+    energy_delta: 0,
+    health_delta: 0,
+    happiness_delta: 0,
+    cost_kobo: 0,
+    ends_day: false,
+    cooldown_minutes: 0,
+  };
 }
 
 /** Server time minus this device's time (only called from event handlers and effects). */
@@ -274,6 +305,10 @@ export default function GameClient({ game }: { game: GameState }) {
   const [adRotation, setAdRotation] = useState(0);
   const [openAd, setOpenAd] = useState<GameAd | null>(null);
   const viewedAds = useRef(new Set<string>());
+
+  // Academics: loaded on start, every 2 minutes (lecture windows open and close), and after each action.
+  const [academics, setAcademics] = useState<Academics | null>(null);
+  const [showAcademics, setShowAcademics] = useState(false);
   const lastEventId = useRef(0);
   const handled = useRef(new Set<number>());
   const effectKey = useRef(0);
@@ -310,6 +345,25 @@ export default function GameClient({ game }: { game: GameState }) {
     const t = setTimeout(() => setToast(null), 2600);
     return () => clearTimeout(t);
   }, [toast]);
+
+  useEffect(() => {
+    let live = true;
+    const load = () =>
+      academicsAction().then((a) => {
+        if (live && a) setAcademics(a);
+      });
+    const first = setTimeout(load, 200);
+    const timer = setInterval(load, 120_000);
+    return () => {
+      live = false;
+      clearTimeout(first);
+      clearInterval(timer);
+    };
+  }, []);
+
+  function refreshAcademics() {
+    void academicsAction().then((a) => a && setAcademics(a));
+  }
 
   useEffect(() => {
     if (ads.length < 2) return;
@@ -405,7 +459,9 @@ export default function GameClient({ game }: { game: GameState }) {
   const busyUntil = s.busy_until ? Date.parse(s.busy_until) : 0;
   const busySlug = busyUntil > now ? s.busy_activity : null;
   const currentSlug = pending ?? busySlug;
-  const current = activities.find((a) => a.slug === currentSlug) ?? null;
+  const current: GameActivity | null = currentSlug
+    ? (activities.find((a) => a.slug === currentSlug) ?? academicActivity(currentSlug, s.location_kind))
+    : null;
   const occupied = current !== null;
 
   const here = locations.find((l) => l.kind === s.location_kind) ?? null;
@@ -428,7 +484,7 @@ export default function GameClient({ game }: { game: GameState }) {
   const roomSpot: Spot = asleep
     ? BED_SPOT
     : current
-      ? spotFor(current.slug, animationFor(current))
+      ? spotFor(current.slug, animationFor(current), inside)
       : ENTRY_SPOT;
   const hour = lagosHour(now);
   const night = lightingFor(hour).lamp;
@@ -523,6 +579,34 @@ export default function GameClient({ game }: { game: GameState }) {
     }
   }, [showingAdIds]);
 
+  const phase = academics?.calendar.phase ?? null;
+  const liveMine =
+    phase === "lectures" && !academics?.strike ? (academics?.modules.find((m) => m.live_lecture) ?? null) : null;
+  const board = academics?.strike
+    ? "STRIKE · No lectures"
+    : phase === "exams"
+      ? "EXAMS IN PROGRESS · Silence"
+      : phase === "holiday"
+        ? "HOLIDAY · Results are out"
+        : liveMine
+          ? `${liveMine.code} · ${liveMine.title}`
+          : "No lecture right now";
+
+  function doAcademic(kind: "lecture" | "study" | "exam", code: string) {
+    setError(null);
+    setPending(`${kind}:${code}`);
+    startTransition(async () => {
+      const fn = kind === "lecture" ? attendLectureAction : kind === "study" ? studyAction : writeExamAction;
+      const ok = apply(await fn(code));
+      setPending(null);
+      if (!ok) return;
+      refreshAcademics();
+      setToast([
+        kind === "lecture" ? `📚 Attended ${code}` : kind === "study" ? `📖 +1 study · ${code}` : `📝 ${code} exam written`,
+      ]);
+    });
+  }
+
   // ---------- Actions ----------
 
   function enter() {
@@ -536,8 +620,12 @@ export default function GameClient({ game }: { game: GameState }) {
     setError(null);
     setEntering(true);
     startTransition(async () => {
-      const ok = apply(await travelAction(zonePlace.id));
+      const result = await travelAction(zonePlace.id);
+      const ok = apply(result);
       setEntering(false);
+      if (ok && (result.dynamic as { curfew_fine?: boolean } | undefined)?.curfew_fine) {
+        setToast(["🚧 Curfew! You paid a gate fine"]);
+      }
       if (ok) {
         setFeed([]);
         if (hasInterior(kind)) setInside(kind);
@@ -720,6 +808,91 @@ export default function GameClient({ game }: { game: GameState }) {
       </div>
     );
 
+  const nextOfMine = academics
+    ? academics.modules
+        .map((m) => ({ m, at: nextLectureStart(m.slots, now) }))
+        .filter((x): x is { m: (typeof academics.modules)[number]; at: number } => x.at !== null && !x.m.live_lecture)
+        .sort((a, b) => a.at - b.at)[0]
+    : undefined;
+
+  const academicBlock =
+    academics && roomKind && ["faculty", "library", "hostel"].includes(roomKind) && academics.registered ? (
+      <div className="mt-3 rounded-2xl border border-sky-400/20 bg-sky-400/5 p-3">
+        <div className="flex items-center justify-between">
+          <p className="text-xs font-semibold tracking-[0.15em] text-sky-300">📚 {phaseLabel(academics).toUpperCase()}</p>
+          <button type="button" onClick={() => setShowAcademics(true)} className="text-xs text-sky-300 underline">
+            Timetable & results
+          </button>
+        </div>
+        {roomKind === "faculty" && phase === "lectures" && (
+          <div className="mt-2 flex flex-wrap gap-2">
+            {academics.modules.filter((m) => m.live_lecture).length === 0 ? (
+              <p className="text-xs text-zinc-300">
+                No lecture of yours right now.
+                {nextOfMine &&
+                  ` Next: ${nextOfMine.m.code} ${slotLabel(nextOfMine.m.slots.find((sl) => nextLectureStart([sl], now) === nextOfMine.at) ?? nextOfMine.m.slots[0])} (in ${formatDuration(nextOfMine.at - now)})`}
+              </p>
+            ) : (
+              academics.modules
+                .filter((m) => m.live_lecture)
+                .map((m) => (
+                  <button
+                    key={m.code}
+                    type="button"
+                    onClick={() => doAcademic("lecture", m.code)}
+                    disabled={occupied || m.attended_live || Boolean(academics.strike)}
+                    className="rounded-xl bg-sky-500 px-3 py-2 text-sm font-bold text-black disabled:opacity-40"
+                  >
+                    {m.attended_live ? `✅ ${m.code} attended` : `Attend ${m.code} lecture`}
+                  </button>
+                ))
+            )}
+          </div>
+        )}
+        {roomKind === "faculty" && phase === "exams" && (
+          <div className="mt-2 flex flex-wrap gap-2">
+            {academics.modules.filter((m) => !m.exam_written).length === 0 ? (
+              <p className="text-xs text-zinc-300">All exams written. Results come out when exam week ends.</p>
+            ) : (
+              academics.modules
+                .filter((m) => !m.exam_written)
+                .map((m) => (
+                  <button
+                    key={m.code}
+                    type="button"
+                    onClick={() => doAcademic("exam", m.code)}
+                    disabled={occupied}
+                    className="rounded-xl bg-amber-400 px-3 py-2 text-sm font-bold text-black disabled:opacity-40"
+                  >
+                    📝 Write {m.code}
+                  </button>
+                ))
+            )}
+          </div>
+        )}
+        {(roomKind === "library" || roomKind === "hostel") && phase !== "holiday" && (
+          <div className="mt-2 flex flex-wrap gap-2">
+            {academics.modules
+              .filter((m) => !m.exam_written && m.study_points < 10)
+              .map((m) => (
+                <button
+                  key={m.code}
+                  type="button"
+                  onClick={() => doAcademic("study", m.code)}
+                  disabled={occupied}
+                  className="rounded-xl border border-sky-400/40 px-3 py-2 text-xs font-bold text-sky-200 disabled:opacity-40"
+                >
+                  📖 Study {m.code} ({m.study_points}/10)
+                </button>
+              ))}
+          </div>
+        )}
+        {phase === "holiday" && (
+          <p className="mt-2 text-xs text-zinc-300">Holiday. Check your results in Timetable & results.</p>
+        )}
+      </div>
+    ) : null;
+
   // Who is here, what just happened, and a box to say something.
   const socialBlock = atPlace ? (
     <div className="mt-3 border-t border-white/10 pt-3">
@@ -800,6 +973,7 @@ export default function GameClient({ game }: { game: GameState }) {
             selfPose={current || asleep ? null : (myEffect?.pose ?? null)}
             onSelectPerson={setSelected}
             song={song}
+            board={board}
           />
         ) : webgl ? (
           <CampusWorld
@@ -894,6 +1068,16 @@ export default function GameClient({ game }: { game: GameState }) {
           <MiniMeter icon="❤️" value={s.health} color="#f87171" />
           <MiniMeter icon="😊" value={s.happiness} color="#e879f9" />
           <p className="text-[11px] text-zinc-400">👥 {people.length} online on campus</p>
+          {academics && (
+            <button
+              type="button"
+              onClick={() => setShowAcademics(true)}
+              className="pointer-events-auto mt-0.5 text-left text-[11px] font-semibold text-sky-300"
+            >
+              📚 {phaseLabel(academics)}
+              {academics.cgpa !== null && ` · CGPA ${Number(academics.cgpa).toFixed(2)}`}
+            </button>
+          )}
         </div>
 
         <AnimatePresence>
@@ -913,6 +1097,16 @@ export default function GameClient({ game }: { game: GameState }) {
                 className="block w-full rounded-xl px-3 py-2 text-left hover:bg-white/10"
               >
                 💰 Wallet
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setMenu(false);
+                  setShowAcademics(true);
+                }}
+                className="block w-full rounded-xl px-3 py-2 text-left hover:bg-white/10"
+              >
+                📚 Academics
               </button>
               <Link href="/campus" className="block rounded-xl px-3 py-2 hover:bg-white/10">
                 🗺️ Campus map
@@ -1017,6 +1211,7 @@ export default function GameClient({ game }: { game: GameState }) {
                     {song && <span className="text-[10px] text-zinc-400">Sponsored</span>}
                   </button>
                 )}
+                {academicBlock}
                 {activityList}
                 {socialBlock}
               </>
@@ -1121,6 +1316,9 @@ export default function GameClient({ game }: { game: GameState }) {
       )}
 
       {openAd && <AdCard ad={openAd} onClose={() => setOpenAd(null)} />}
+      {showAcademics && (
+        <AcademicsPanel academics={academics} nowMs={now} onClose={() => setShowAcademics(false)} />
+      )}
 
       {panel === "wallet" && (
         <WalletPanel

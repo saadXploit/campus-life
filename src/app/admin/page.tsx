@@ -61,6 +61,14 @@ export default async function AdminHomePage() {
             </Link>
           )}
           {can(role, "settings.manage") && (
+            <Link href="/admin/academics" className={card}>
+              Academics
+              <span className="block text-sm font-normal text-zinc-400">
+                Semester calendar and strikes
+              </span>
+            </Link>
+          )}
+          {can(role, "settings.manage") && (
             <Link href="/admin/settings" className={card}>
               Game settings
               <span className="block text-sm font-normal text-zinc-400">

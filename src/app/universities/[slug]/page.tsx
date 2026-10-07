@@ -4,7 +4,7 @@ import StatBar from "@/components/StatBar";
 import UniversityCrest from "@/components/UniversityCrest";
 import { requireUser } from "@/lib/auth/guards";
 import { getMyPlayer } from "@/lib/game/player";
-import { TYPE_LABEL, competitiveness, getUniversity } from "@/lib/game/universities";
+import { TYPE_LABEL, TYPE_PERKS, competitiveness, getUniversity } from "@/lib/game/universities";
 import { formatNaira } from "@/lib/money";
 
 export default async function UniversityPage({
@@ -55,6 +55,17 @@ export default async function UniversityPage({
 
       <div className="mx-auto max-w-3xl space-y-6 px-4">
         <p className="text-sm leading-relaxed text-zinc-300">{u.description}</p>
+
+        <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+          <p className="text-xs font-semibold tracking-[0.2em] text-amber-300">
+            {TYPE_LABEL[u.type].toUpperCase()} UNIVERSITY LIFE
+          </p>
+          <ul className="mt-2 space-y-1 text-sm text-zinc-200">
+            {TYPE_PERKS[u.type].map((perk) => (
+              <li key={perk}>• {perk}</li>
+            ))}
+          </ul>
+        </div>
 
         <div className="grid grid-cols-2 gap-3">
           <div className="rounded-2xl border border-white/10 bg-white/5 p-4">

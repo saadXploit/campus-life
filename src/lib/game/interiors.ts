@@ -45,8 +45,18 @@ export const ACTIVITY_SPOTS: Record<string, Spot> = {
   health_checkup: { x: -2.6, y: 0.27, z: -0.6, heading: 0.5, pose: "sit" },
 };
 
-/** Where an activity happens. Unknown activities play in the middle of the room. */
-export function spotFor(slug: string, fallback: Pose): Spot {
+/** Your desk in the lecture room (lectures and exams). */
+export const LECTURE_SEAT: Spot = { x: -0.6, y: 0, z: 0.8, heading: Math.PI, pose: "sit" };
+
+/**
+ * Where an activity happens. Academic work ("lecture:CSC111", "study:...", "exam:...")
+ * sits you at a desk; unknown activities play in the middle of the room.
+ */
+export function spotFor(slug: string, fallback: Pose, roomKind: string | null = null): Spot {
+  if (slug.startsWith("lecture:") || slug.startsWith("exam:")) return LECTURE_SEAT;
+  if (slug.startsWith("study:")) {
+    return roomKind === "hostel" ? ACTIVITY_SPOTS.bread_and_tea : ACTIVITY_SPOTS.quiet_reading;
+  }
   return ACTIVITY_SPOTS[slug] ?? { x: 0, y: 0, z: 0.5, heading: 0, pose: fallback };
 }
 
@@ -88,8 +98,8 @@ const GUEST_SPOTS: Record<string, Spot[]> = {
     { x: -0.6, y: 0, z: -0.6, heading: PI, pose: "sit" },
     { x: 1.4, y: 0, z: -0.6, heading: PI, pose: "sit" },
     { x: -2.6, y: 0, z: 0.8, heading: PI, pose: "sit" },
-    { x: -0.6, y: 0, z: 0.8, heading: PI, pose: "sit" },
     { x: 1.4, y: 0, z: 0.8, heading: PI, pose: "sit" },
+    { x: 3.2, y: 0, z: 2.2, heading: -0.6, pose: "idle" },
   ],
   clubhouse: [
     { x: -1.1, y: 0.08, z: -0.9, heading: 0.6, pose: "dance" },
