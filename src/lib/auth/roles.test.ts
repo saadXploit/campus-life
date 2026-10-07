@@ -66,6 +66,12 @@ describe("permissions", () => {
     expect(can("SUPER_ADMIN", "staff.manage")).toBe(false);
   });
 
+  it("restricts game settings to OWNER and SUPER_ADMIN", () => {
+    expect(can("OWNER", "settings.manage")).toBe(true);
+    expect(can("SUPER_ADMIN", "settings.manage")).toBe(true);
+    expect(can("ADMIN", "settings.manage")).toBe(false);
+  });
+
   it("restricts audit log and economy to OWNER and SUPER_ADMIN", () => {
     expect(can("SUPER_ADMIN", "audit.view")).toBe(true);
     expect(can("ADMIN", "audit.view")).toBe(false);

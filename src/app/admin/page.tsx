@@ -44,6 +44,22 @@ export default async function AdminHomePage() {
               </span>
             </Link>
           )}
+          {can(role, "settings.manage") && (
+            <Link href="/admin/settings" className={card}>
+              Game settings
+              <span className="block text-sm font-normal text-zinc-400">
+                Pause new registrations, set money transfer limits
+              </span>
+            </Link>
+          )}
+          {can(role, "economy.inject") && (
+            <Link href="/admin/economy" className={card}>
+              Economy
+              <span className="block text-sm font-normal text-zinc-400">
+                Credit or debit a student&apos;s wallet (audited)
+              </span>
+            </Link>
+          )}
         </div>
 
         <p className="mt-6 text-sm text-zinc-500">

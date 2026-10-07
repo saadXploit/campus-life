@@ -42,6 +42,7 @@ export function canModifyStaffMember(actor: unknown, targetRole: unknown): boole
 
 export type Permission =
   | "staff.manage"
+  | "settings.manage"
   | "audit.view"
   | "economy.inject"
   | "players.ban"
@@ -52,6 +53,7 @@ export type Permission =
 /** The lowest role that is allowed to do each thing. */
 const PERMISSIONS: Record<Permission, StaffRole> = {
   "staff.manage": "OWNER",
+  "settings.manage": "SUPER_ADMIN",
   "audit.view": "SUPER_ADMIN",
   "economy.inject": "SUPER_ADMIN",
   "players.ban": "ADMIN",
