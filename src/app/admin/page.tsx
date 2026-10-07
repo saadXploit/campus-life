@@ -44,6 +44,14 @@ export default async function AdminHomePage() {
               </span>
             </Link>
           )}
+          {can(role, "reports.review") && (
+            <Link href="/admin/reports" className={card}>
+              Player reports
+              <span className="block text-sm font-normal text-zinc-400">
+                Review reports, suspend or ban players
+              </span>
+            </Link>
+          )}
           {can(role, "settings.manage") && (
             <Link href="/admin/settings" className={card}>
               Game settings
@@ -63,7 +71,7 @@ export default async function AdminHomePage() {
         </div>
 
         <p className="mt-6 text-sm text-zinc-500">
-          Admin sessions last 8 hours. Moderation tools arrive in a later stage.
+          Admin sessions last 8 hours.
         </p>
 
         <div className="mt-8 flex flex-wrap gap-3">

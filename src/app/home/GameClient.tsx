@@ -2,16 +2,46 @@
 
 import dynamic from "next/dynamic";
 import Link from "next/link";
-import { useEffect, useMemo, useRef, useState, useTransition, type RefObject } from "react";
+import {
+  useEffect,
+  useEffectEvent,
+  useMemo,
+  useRef,
+  useState,
+  useTransition,
+  type RefObject,
+} from "react";
 import { AnimatePresence, motion } from "framer-motion";
+import AmbientSound from "@/components/AmbientSound";
 import UniversityCrest from "@/components/UniversityCrest";
 import type { AvatarAction } from "@/components/scene/Avatar3D";
-import type { GameActivity, GameDynamic, GameState } from "@/lib/game/gameTypes";
-import { BED_SPOT, ENTRY_SPOT, hasInterior, spotFor, type Spot } from "@/lib/game/interiors";
+import type { CrowdMember } from "@/components/world/CampusWorld";
+import type { ShownPerson } from "@/components/world/People";
+import type { AmbientKind } from "@/lib/audio/ambient";
+import type {
+  GameActivity,
+  GameDynamic,
+  GameInteraction,
+  GameState,
+  Person,
+  PlaceEvent,
+  WorldSnapshot,
+} from "@/lib/game/gameTypes";
+import {
+  BED_SPOT,
+  ENTRY_SPOT,
+  guestSpot,
+  hasInterior,
+  spotFor,
+  type Pose,
+  type Spot,
+} from "@/lib/game/interiors";
+import { lightingFor } from "@/lib/game/lighting";
 import { formatClock, formatDuration, lagosDateLabel, lagosHour } from "@/lib/game/time";
 import { travelEnergy } from "@/lib/game/travel";
 import { formatNaira } from "@/lib/money";
 import NotificationsPanel from "./NotificationsPanel";
+import PlayerCard from "./PlayerCard";
 import WalletPanel from "./WalletPanel";
 import {
   performActivityAction,
@@ -20,6 +50,7 @@ import {
   wakeUpAction,
   type ActionResult,
 } from "./actions";
+import { blockAction, interactAction, reportAction, sayAction, snapshotAction } from "./social-actions";
 
 function Loading() {
   return (
@@ -41,6 +72,9 @@ const InteriorScene = dynamic(() => import("@/components/world/InteriorScene"), 
 
 /** Shown only as a guide while asleep. The server decides the real amount on waking. */
 const SLEEP_ENERGY_PER_HOUR = 17;
+/** How often we ask who is around (seconds). */
+const POLL_AWAKE = 6;
+const POLL_ASLEEP = 20;
 
 /** Which body animation an activity plays. */
 function animationFor(a: GameActivity): AvatarAction {
@@ -57,6 +91,14 @@ function clockSkew(serverTime: string): number {
 
 function signed(n: number): string {
   return n > 0 ? `+${n}` : String(n);
+}
+
+function readMuted(): boolean {
+  try {
+    return localStorage.getItem("cl_sound") === "off";
+  } catch {
+    return false;
+  }
 }
 
 function MiniMeter({ icon, value, color }: { icon: string; value: number; color: string }) {
@@ -188,8 +230,12 @@ function SleepOverlay({
   );
 }
 
+type Effect = { pose: Pose | null; bubble: string; key: number };
+type FeedLine = { id: number; text: string };
+
 export default function GameClient({ game }: { game: GameState }) {
-  const { locations, activities, enrollment } = game;
+  const { locations, activities, interactions, enrollment } = game;
+  const me = game.player.id;
   const university = enrollment.university;
   const [, startTransition] = useTransition();
 
@@ -212,6 +258,20 @@ export default function GameClient({ game }: { game: GameState }) {
   const [menu, setMenu] = useState(false);
   const [panel, setPanel] = useState<"wallet" | "notifications" | null>(null);
 
+  // Social: who is around, what is happening, who you are looking at.
+  const [people, setPeople] = useState<Person[]>([]);
+  const [feed, setFeed] = useState<FeedLine[]>([]);
+  const [effects, setEffects] = useState<Record<string, Effect>>({});
+  const [selected, setSelected] = useState<string | null>(null);
+  const [pendingInteraction, setPendingInteraction] = useState<string | null>(null);
+  const [chat, setChat] = useState("");
+  const [muted, setMuted] = useState(false);
+  const lastEventId = useRef(0);
+  const handled = useRef(new Set<number>());
+  const effectKey = useRef(0);
+  // Latest chat line from each player here (attached to reports as evidence).
+  const [lastMessageFrom, setLastMessageFrom] = useState<Record<string, number>>({});
+
   const avatar = useMemo(
     () => ({
       skin: game.player.skin,
@@ -226,6 +286,7 @@ export default function GameClient({ game }: { game: GameState }) {
     const first = setTimeout(() => {
       skewRef.current = clockSkew(game.server_time);
       setWebgl(detectWebGL());
+      setMuted(readMuted());
       setNow(Date.now() + skewRef.current);
     }, 0);
     // The campus clock and the light move with real time.
@@ -254,8 +315,79 @@ export default function GameClient({ game }: { game: GameState }) {
     return true;
   }
 
+  // ---------- Bubbles, poses and the activity log ----------
+
+  function addEffect(id: string, pose: Pose | null, bubble: string, ms: number) {
+    const key = ++effectKey.current;
+    setEffects((prev) => ({ ...prev, [id]: { pose, bubble, key } }));
+    setTimeout(() => {
+      setEffects((prev) => {
+        if (prev[id]?.key !== key) return prev;
+        const next = { ...prev };
+        delete next[id];
+        return next;
+      });
+    }, ms);
+  }
+
+  function describe(ev: PlaceEvent): string {
+    if (ev.kind === "message") return `${ev.actor}: ${ev.body ?? ""}`;
+    if (ev.kind === "thrown_out") return `🚪 The bouncers threw ${ev.actor} out!`;
+    const it = interactions.find((i) => i.slug === ev.kind);
+    return it ? `${it.emoji} ${ev.actor} ${it.verb} ${ev.target ?? "someone"}` : `${ev.actor} did something`;
+  }
+
+  function showEvent(ev: PlaceEvent, fresh: boolean) {
+    setFeed((prev) => [...prev, { id: ev.id, text: describe(ev) }].slice(-5));
+    if (ev.kind === "message") setLastMessageFrom((prev) => ({ ...prev, [ev.actor_id]: ev.id }));
+    if (!fresh) return;
+    if (ev.kind === "message") {
+      addEffect(ev.actor_id, "talk", ev.body ?? "", 6000);
+    } else if (ev.kind === "thrown_out") {
+      addEffect(ev.actor_id, null, "🚪 Thrown out!", 4000);
+    } else {
+      const it = interactions.find((i) => i.slug === ev.kind);
+      if (it) {
+        addEffect(ev.actor_id, it.pose, it.emoji, 4000);
+        if (ev.target_id) addEffect(ev.target_id, it.pose === "fight" ? "fight" : null, it.emoji, 4000);
+      }
+    }
+  }
+
+  const onSnapshot = useEffectEvent((snap: WorldSnapshot) => {
+    setPeople(snap.people);
+    const serverNow = Date.parse(snap.server_time);
+    for (const ev of snap.events) {
+      lastEventId.current = Math.max(lastEventId.current, ev.id);
+      if (handled.current.has(ev.id)) continue;
+      handled.current.add(ev.id);
+      showEvent(ev, serverNow - Date.parse(ev.at) < 15_000);
+    }
+  });
+
+  const asleepNow = dyn.state.asleep_since !== null;
+
+  // Ask who is around every few seconds (less often while asleep, never when the tab is hidden).
+  useEffect(() => {
+    let stopped = false;
+    async function poll() {
+      if (document.visibilityState !== "visible") return;
+      const snap = await snapshotAction(lastEventId.current);
+      if (!stopped && snap) onSnapshot(snap);
+    }
+    const first = setTimeout(poll, 300);
+    const timer = setInterval(poll, (asleepNow ? POLL_ASLEEP : POLL_AWAKE) * 1000);
+    return () => {
+      stopped = true;
+      clearTimeout(first);
+      clearInterval(timer);
+    };
+  }, [asleepNow]);
+
+  // ---------- Derived state ----------
+
   const s = dyn.state;
-  const asleep = s.asleep_since !== null;
+  const asleep = asleepNow;
   const busyUntil = s.busy_until ? Date.parse(s.busy_until) : 0;
   const busySlug = busyUntil > now ? s.busy_activity : null;
   const currentSlug = pending ?? busySlug;
@@ -270,14 +402,89 @@ export default function GameClient({ game }: { game: GameState }) {
   const roomKind = inside !== null && inside === s.location_kind ? inside : null;
   const insidePlace = locations.find((l) => l.kind === roomKind) ?? null;
   const tripEnergy = here && zonePlace ? travelEnergy(here, zonePlace) : 0;
+  // You are "at" a place (can chat, see people there) inside its room or standing at its door.
+  const atPlace = roomKind !== null || atCheckedInPlace;
 
-  const avatarAction: AvatarAction | null = asleep ? "sleep" : current ? animationFor(current) : null;
+  const myEffect = effects[me] ?? null;
+  const avatarAction: AvatarAction | null = asleep
+    ? "sleep"
+    : current
+      ? animationFor(current)
+      : (myEffect?.pose ?? null);
   const roomSpot: Spot = asleep
     ? BED_SPOT
     : current
       ? spotFor(current.slug, animationFor(current))
       : ENTRY_SPOT;
   const hour = lagosHour(now);
+  const night = lightingFor(hour).lamp;
+
+  const herePeople = people.filter((p) => p.location_kind === s.location_kind);
+
+  function poseOf(p: Person, slotPose: Pose | null): Pose {
+    const fx = effects[p.id]?.pose;
+    if (fx) return fx;
+    if (p.asleep) return "sleep";
+    const act = p.activity ? activities.find((a) => a.slug === p.activity) : null;
+    if (act) return slotPose === "sit" ? "sit" : animationFor(act);
+    return slotPose ?? "idle";
+  }
+
+  const toAvatar = (p: Person) => ({
+    skin: p.skin,
+    hairStyle: p.hair_style,
+    hairColor: p.hair_color,
+    outfit: p.outfit,
+  });
+
+  // Outdoors: awake players appear in front of the building they are at.
+  const crowd: CrowdMember[] = people
+    .filter((p) => !p.asleep)
+    .map((p) => ({
+      id: p.id,
+      name: p.name,
+      avatar: toAvatar(p),
+      kind: p.location_kind,
+      pose: poseOf(p, null),
+      bubble: effects[p.id]?.bubble ?? null,
+      friend: p.bond >= 40,
+    }));
+
+  // In a room: everyone here gets a spot (sleeping roommates get the other bunks).
+  let sleeperIndex = 0;
+  let awakeIndex = 0;
+  const guests: ShownPerson[] = roomKind
+    ? herePeople.map((p) => {
+        const spot = p.asleep
+          ? guestSpot(roomKind, sleeperIndex++, true)
+          : guestSpot(roomKind, awakeIndex++, false);
+        return {
+          id: p.id,
+          name: p.name,
+          avatar: toAvatar(p),
+          x: spot.x,
+          y: spot.y,
+          z: spot.z,
+          heading: spot.heading,
+          pose: poseOf(p, spot.pose),
+          bubble: effects[p.id]?.bubble ?? null,
+          friend: p.bond >= 40,
+        };
+      })
+    : [];
+
+  const selectedPerson = people.find((p) => p.id === selected) ?? null;
+  const placeInteractions: GameInteraction[] = interactions.filter((i) =>
+    s.location_kind ? i.place_kinds.includes(s.location_kind) : false
+  );
+
+  const ambient: AmbientKind = roomKind
+    ? (roomKind as AmbientKind)
+    : atCheckedInPlace && (zonePlace?.kind === "sports" || zonePlace?.kind === "market")
+      ? (zonePlace.kind as AmbientKind)
+      : "outdoor";
+
+  // ---------- Actions ----------
 
   function enter() {
     if (!zonePlace) return;
@@ -292,7 +499,10 @@ export default function GameClient({ game }: { game: GameState }) {
     startTransition(async () => {
       const ok = apply(await travelAction(zonePlace.id));
       setEntering(false);
-      if (ok && hasInterior(kind)) setInside(kind);
+      if (ok) {
+        setFeed([]);
+        if (hasInterior(kind)) setInside(kind);
+      }
     });
   }
 
@@ -326,6 +536,107 @@ export default function GameClient({ game }: { game: GameState }) {
     });
   }
 
+  function interact(person: Person, kind: string) {
+    setError(null);
+    setPendingInteraction(kind);
+    startTransition(async () => {
+      const result = await interactAction(person.id, kind);
+      setPendingInteraction(null);
+      if (!result.dynamic) {
+        setError(result.error ?? "That did not work.");
+        setSelected(null);
+        return;
+      }
+      apply({ dynamic: result.dynamic });
+      const it = interactions.find((i) => i.slug === kind);
+      const eventId = (result.dynamic as { event_id?: number }).event_id;
+      if (eventId) {
+        handled.current.add(eventId);
+        showEvent(
+          {
+            id: eventId,
+            kind,
+            body: null,
+            actor_id: me,
+            actor: game.player.name,
+            target_id: person.id,
+            target: person.name,
+            at: result.dynamic.server_time,
+          },
+          true
+        );
+      }
+      setSelected(null);
+      if (result.dynamic.thrown_out) {
+        setInside(null);
+        setFeed([]);
+        setToast(["🚪 The bouncers threw you out!"]);
+      } else if (it && it.cost_kobo > 0) {
+        setToast([`${it.emoji} -${formatNaira(it.cost_kobo)}`]);
+      }
+    });
+  }
+
+  function say() {
+    const text = chat.trim();
+    if (!text) return;
+    setChat("");
+    startTransition(async () => {
+      const result = await sayAction(text);
+      if (result.error || !result.eventId) {
+        setError(result.error ?? "Your message was not sent.");
+        return;
+      }
+      handled.current.add(result.eventId);
+      showEvent(
+        {
+          id: result.eventId,
+          kind: "message",
+          body: text,
+          actor_id: me,
+          actor: game.player.name,
+          target_id: null,
+          target: null,
+          at: new Date(now).toISOString(),
+        },
+        true
+      );
+    });
+  }
+
+  function block(person: Person) {
+    startTransition(async () => {
+      const result = await blockAction(person.id, true);
+      if (result.error) {
+        setError(result.error);
+        return;
+      }
+      setPeople((prev) => prev.filter((p) => p.id !== person.id));
+      setSelected(null);
+      setToast([`🚫 ${person.name} blocked`]);
+    });
+  }
+
+  async function report(person: Person, reason: string, details: string): Promise<string | null> {
+    const result = await reportAction({
+      targetId: person.id,
+      reason,
+      details,
+      eventId: lastMessageFrom[person.id] ?? null,
+    });
+    return result.error ?? null;
+  }
+
+  function toggleSound() {
+    const next = !muted;
+    setMuted(next);
+    try {
+      localStorage.setItem("cl_sound", next ? "off" : "on");
+    } catch {
+      // Storage blocked: the setting just won't be remembered.
+    }
+  }
+
   function canDo(a: GameActivity): string | null {
     const ready = dyn.cooldowns[a.slug] ? Date.parse(dyn.cooldowns[a.slug]) : 0;
     if (ready > now) return `Ready in ${formatDuration(ready - now)}`;
@@ -338,7 +649,7 @@ export default function GameClient({ game }: { game: GameState }) {
     hereActivities.length === 0 ? (
       <p className="mt-2 text-sm text-zinc-400">Nothing to do here yet.</p>
     ) : (
-      <div className="mt-3 flex max-h-[38vh] gap-2 overflow-x-auto pb-1 sm:grid sm:grid-cols-2 sm:overflow-visible">
+      <div className="mt-3 flex max-h-[30vh] gap-2 overflow-x-auto pb-1 sm:grid sm:grid-cols-2 sm:overflow-visible">
         {hereActivities.map((a) => {
           const blocked = canDo(a);
           return (
@@ -370,8 +681,64 @@ export default function GameClient({ game }: { game: GameState }) {
       </div>
     );
 
+  // Who is here, what just happened, and a box to say something.
+  const socialBlock = atPlace ? (
+    <div className="mt-3 border-t border-white/10 pt-3">
+      {herePeople.length > 0 ? (
+        <div className="flex gap-2 overflow-x-auto pb-1">
+          {herePeople.map((p) => (
+            <button
+              key={p.id}
+              type="button"
+              onClick={() => setSelected(p.id)}
+              className="shrink-0 rounded-full border border-white/15 bg-white/5 px-3 py-1 text-xs font-semibold hover:bg-white/10"
+            >
+              {p.asleep ? "😴 " : p.bond >= 40 ? "💚 " : p.bond <= -10 ? "😠 " : ""}
+              {p.name}
+            </button>
+          ))}
+        </div>
+      ) : (
+        <p className="text-xs text-zinc-500">Nobody else is here right now.</p>
+      )}
+      {feed.length > 0 && (
+        <div className="mt-2 space-y-0.5 text-xs text-zinc-300">
+          {feed.map((f) => (
+            <p key={f.id} className="truncate">
+              {f.text}
+            </p>
+          ))}
+        </div>
+      )}
+      <form
+        className="mt-2 flex gap-2"
+        onSubmit={(e) => {
+          e.preventDefault();
+          say();
+        }}
+      >
+        <input
+          value={chat}
+          onChange={(e) => setChat(e.target.value)}
+          maxLength={140}
+          placeholder="Say something to everyone here..."
+          className="min-w-0 flex-1 rounded-xl border border-white/15 bg-white/5 px-3 py-2 text-sm outline-none focus:border-amber-400"
+        />
+        <button
+          type="submit"
+          disabled={!chat.trim()}
+          className="rounded-xl bg-amber-400 px-3 py-2 text-sm font-bold text-black disabled:opacity-40"
+        >
+          Say
+        </button>
+      </form>
+    </div>
+  ) : null;
+
   return (
     <main className="fixed inset-0 overflow-hidden bg-[#0b1020] text-white">
+      <AmbientSound kind={ambient} night={night} muted={muted || asleep} />
+
       {/* the 3D world */}
       <div className="absolute inset-0">
         {webgl === false ? (
@@ -389,6 +756,10 @@ export default function GameClient({ game }: { game: GameState }) {
             hour={hour}
             primary={university.primary_color}
             secondary={university.secondary_color}
+            guests={guests}
+            selfBubble={myEffect?.bubble ?? null}
+            selfPose={current || asleep ? null : (myEffect?.pose ?? null)}
+            onSelectPerson={setSelected}
           />
         ) : webgl ? (
           <CampusWorld
@@ -402,6 +773,9 @@ export default function GameClient({ game }: { game: GameState }) {
             spawnKey="campus"
             action={avatarAction}
             onZoneChange={setZone}
+            crowd={crowd}
+            selfBubble={myEffect?.bubble ?? null}
+            onSelectPerson={setSelected}
           />
         ) : null}
       </div>
@@ -452,13 +826,23 @@ export default function GameClient({ game }: { game: GameState }) {
                 ☰
               </button>
             </div>
-            <button
-              type="button"
-              onClick={() => setPanel("wallet")}
-              className="pointer-events-auto rounded-full bg-black/45 px-3 py-1.5 text-sm font-extrabold text-emerald-300 backdrop-blur"
-            >
-              {formatNaira(dyn.balance_kobo)} ›
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={toggleSound}
+                aria-label={muted ? "Turn sound on" : "Turn sound off"}
+                className="pointer-events-auto rounded-full bg-black/45 px-3 py-1.5 text-sm backdrop-blur"
+              >
+                {muted ? "🔇" : "🔊"}
+              </button>
+              <button
+                type="button"
+                onClick={() => setPanel("wallet")}
+                className="pointer-events-auto rounded-full bg-black/45 px-3 py-1.5 text-sm font-extrabold text-emerald-300 backdrop-blur"
+              >
+                {formatNaira(dyn.balance_kobo)} ›
+              </button>
+            </div>
           </div>
         </div>
 
@@ -466,6 +850,7 @@ export default function GameClient({ game }: { game: GameState }) {
           <MiniMeter icon="⚡" value={s.energy} color="#fbbf24" />
           <MiniMeter icon="❤️" value={s.health} color="#f87171" />
           <MiniMeter icon="😊" value={s.happiness} color="#e879f9" />
+          <p className="text-[11px] text-zinc-400">👥 {people.length} online on campus</p>
         </div>
 
         <AnimatePresence>
@@ -474,7 +859,7 @@ export default function GameClient({ game }: { game: GameState }) {
               initial={{ opacity: 0, y: -8 }}
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -8 }}
-              className="pointer-events-auto absolute right-3 top-20 w-48 space-y-1 rounded-2xl border border-white/10 bg-[#10172e]/95 p-2 text-sm backdrop-blur sm:right-4"
+              className="pointer-events-auto absolute right-3 top-28 w-48 space-y-1 rounded-2xl border border-white/10 bg-[#10172e]/95 p-2 text-sm backdrop-blur sm:right-4"
             >
               <button
                 type="button"
@@ -552,7 +937,7 @@ export default function GameClient({ game }: { game: GameState }) {
       {/* context panel at the bottom */}
       {!asleep && (
         <div className="pointer-events-none absolute inset-x-0 bottom-0 p-3 sm:p-4">
-          <div className="pointer-events-auto mx-auto max-w-xl rounded-3xl border border-white/10 bg-[#0b1020]/85 p-4 backdrop-blur">
+          <div className="pointer-events-auto mx-auto max-h-[60dvh] max-w-xl overflow-y-auto rounded-3xl border border-white/10 bg-[#0b1020]/85 p-4 backdrop-blur">
             {error && (
               <p className="mb-3 rounded-xl bg-red-500/15 p-2 text-center text-sm text-red-200">{error}</p>
             )}
@@ -574,17 +959,24 @@ export default function GameClient({ game }: { game: GameState }) {
                   </button>
                 </div>
                 {activityList}
+                {socialBlock}
               </>
             ) : zonePlace && atCheckedInPlace && !hasInterior(zonePlace.kind) ? (
               <>
                 <p className="text-xs font-semibold tracking-[0.2em] text-emerald-300">YOU ARE AT</p>
                 <p className="text-lg font-extrabold">{zonePlace.name}</p>
                 {activityList}
+                {socialBlock}
               </>
             ) : zonePlace ? (
               <>
                 <p className="text-lg font-extrabold">{zonePlace.name}</p>
                 <p className="text-sm text-zinc-400">{zonePlace.description}</p>
+                {people.some((p) => p.location_kind === zonePlace.kind) && (
+                  <p className="mt-1 text-xs text-emerald-300">
+                    👥 {people.filter((p) => p.location_kind === zonePlace.kind).length} here now
+                  </p>
+                )}
                 <div className="mt-3 flex items-center gap-3">
                   <button
                     type="button"
@@ -614,12 +1006,39 @@ export default function GameClient({ game }: { game: GameState }) {
                   "Walk to any glowing circle to go somewhere."
                 )}
                 <span className="mt-1 block text-xs text-zinc-500">
-                  WASD or arrow keys to walk (Shift to run) · tap the ground or a building
+                  WASD or arrow keys to walk (Shift to run) · tap the ground, a building or a person
                 </span>
               </p>
             )}
           </div>
         </div>
+      )}
+
+      {selectedPerson && (
+        <PlayerCard
+          person={selectedPerson}
+          placeName={selectedPerson.location_kind === s.location_kind ? (here?.name ?? null) : null}
+          interactions={placeInteractions}
+          blockedReason={
+            selectedPerson.location_kind !== s.location_kind
+              ? `${selectedPerson.name} is at another place. Go there to meet them.`
+              : !atPlace
+                ? `Go to ${here?.name ?? "the same place"} to meet ${selectedPerson.name}.`
+                : asleep
+                  ? "You are asleep."
+                  : occupied
+                    ? "Finish what you are doing first."
+                    : selectedPerson.asleep
+                      ? `${selectedPerson.name} is asleep.`
+                      : null
+          }
+          pendingKind={pendingInteraction}
+          canReportMessage={selectedPerson.id in lastMessageFrom}
+          onInteract={(kind) => interact(selectedPerson, kind)}
+          onBlock={() => block(selectedPerson)}
+          onReport={(reason, details) => report(selectedPerson, reason, details)}
+          onClose={() => setSelected(null)}
+        />
       )}
 
       {panel === "wallet" && (

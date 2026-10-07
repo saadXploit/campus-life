@@ -24,6 +24,52 @@ export type GameActivity = {
   cooldown_minutes: number;
 };
 
+export type GameInteraction = {
+  slug: string;
+  name: string;
+  /** "raised a glass with", for the activity log. */
+  verb: string;
+  emoji: string;
+  pose: "talk" | "toast" | "dance" | "fight" | "busy" | "exercise";
+  place_kinds: string[];
+  energy_cost: number;
+  cost_kobo: number;
+  bond_delta: number;
+};
+
+/** Another real player who is online at your university. */
+export type Person = {
+  id: string;
+  name: string;
+  skin: number;
+  hair_style: number;
+  hair_color: number;
+  outfit: number;
+  location_kind: string;
+  asleep: boolean;
+  activity: string | null;
+  bond: number;
+};
+
+/** Something that happened where you are: a chat line or an interaction. */
+export type PlaceEvent = {
+  id: number;
+  kind: string;
+  body: string | null;
+  actor_id: string;
+  actor: string;
+  target_id: string | null;
+  target: string | null;
+  at: string;
+};
+
+export type WorldSnapshot = {
+  people: Person[];
+  events: PlaceEvent[];
+  location_kind: string | null;
+  server_time: string;
+};
+
 /** The part that changes while playing. Every action returns a fresh copy. */
 export type GameDynamic = {
   state: {
@@ -58,6 +104,7 @@ export type GameState = GameDynamic & {
   };
   locations: GameLocation[];
   activities: GameActivity[];
+  interactions: GameInteraction[];
 };
 
 export type GameStateResult = GameState | { status: "no_player" | "not_enrolled" | "blocked" };

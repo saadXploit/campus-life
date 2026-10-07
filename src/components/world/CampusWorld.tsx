@@ -24,7 +24,7 @@ import {
   type Box,
 } from "@/lib/game/worldLayout";
 import Building from "./Buildings";
-import { makeLabelTexture } from "./labels";
+import { Bubble, NameTag, OtherPlayer, type ShownPerson } from "./People";
 
 export type WorldLocation = {
   id: string;
@@ -36,6 +36,9 @@ export type WorldLocation = {
 };
 
 export type WorldAvatar = { skin: number; hairStyle: number; hairColor: number; outfit: number };
+
+/** Another player out on campus, shown near the building they are checked in at. */
+export type CrowdMember = Omit<ShownPerson, "x" | "y" | "z" | "heading"> & { kind: string };
 
 type Placed = WorldLocation & {
   x: number;
@@ -57,6 +60,9 @@ type Props = {
   /** Set while an activity or sleep is playing. Movement is locked. */
   action: AvatarAction | null;
   onZoneChange: (kind: string | null) => void;
+  crowd: CrowdMember[];
+  selfBubble: string | null;
+  onSelectPerson: (id: string) => void;
 };
 
 const WALK_SPEED = 7;
@@ -184,16 +190,6 @@ function Zone({ x, z, active }: { x: number; z: number; active: boolean }) {
   );
 }
 
-function NameTag({ name }: { name: string }) {
-  const label = useMemo(() => makeLabelTexture(name, { width: 384 }), [name]);
-  useEffect(() => () => label.texture.dispose(), [label]);
-  return (
-    <sprite position={[0, 2.45, 0]} scale={[0.5 * label.aspect, 0.5, 1]}>
-      <spriteMaterial map={label.texture} depthWrite={false} transparent />
-    </sprite>
-  );
-}
-
 function SkyAndFog({ color }: { color: string }) {
   return (
     <>
@@ -217,6 +213,7 @@ function Player({
   targetRef,
   sunColor,
   sunIntensity,
+  bubble,
   onZoneChange,
 }: {
   avatar: WorldAvatar;
@@ -230,6 +227,7 @@ function Player({
   targetRef: React.RefObject<{ x: number; z: number } | null>;
   sunColor: string;
   sunIntensity: number;
+  bubble: string | null;
   onZoneChange: (kind: string | null) => void;
 }) {
   const body = useRef<Group>(null);
@@ -398,6 +396,7 @@ function Player({
           action={action ?? (moving ? "walk" : "idle")}
         />
         <NameTag name={name} />
+        {bubble && <Bubble text={bubble} />}
       </group>
       <mesh ref={marker} rotation={[-Math.PI / 2, 0, 0]} visible={false}>
         <ringGeometry args={[0.35, 0.55, 24]} />
@@ -420,6 +419,9 @@ export default function CampusWorld({
   spawnKey,
   action,
   onZoneChange,
+  crowd,
+  selfBubble,
+  onSelectPerson,
 }: Props) {
   const targetRef = useRef<{ x: number; z: number } | null>(null);
   const [activeZone, setActiveZone] = useState<string | null>(null);
@@ -484,6 +486,24 @@ export default function CampusWorld({
     [placed]
   );
 
+  // Other players gather in a half circle in front of the building they are at.
+  const shown: ShownPerson[] = useMemo(() => {
+    const counts = new Map<string, number>();
+    const out: ShownPerson[] = [];
+    for (const m of crowd) {
+      const place = placed.find((p) => p.kind === m.kind);
+      if (!place) continue;
+      const i = counts.get(m.kind) ?? 0;
+      counts.set(m.kind, i + 1);
+      const a = -1.3 + (i % 7) * 0.43;
+      const r = ZONE_RADIUS + 1.6 + Math.floor(i / 7) * 1.4;
+      const x = place.entrance.x + Math.sin(a) * r;
+      const z = place.entrance.z + Math.cos(a) * r * 0.8;
+      out.push({ ...m, x, y: 0, z, heading: Math.atan2(place.entrance.x - x, place.entrance.z - z) });
+    }
+    return out;
+  }, [crowd, placed]);
+
   const spawnPlace = placed.find((p) => p.kind === spawnKind) ?? placed[0];
   const spawn = spawnPlace ? spawnPlace.entrance : { x: 0, z: 0 };
 
@@ -534,6 +554,10 @@ export default function CampusWorld({
         </group>
       ))}
 
+      {shown.map((p) => (
+        <OtherPlayer key={p.id} p={p} onSelect={onSelectPerson} />
+      ))}
+
       <Player
         avatar={avatar}
         name={playerName}
@@ -546,6 +570,7 @@ export default function CampusWorld({
         targetRef={targetRef}
         sunColor={light.sunColor}
         sunIntensity={light.sun * 1.6}
+        bubble={selfBubble}
         onZoneChange={zoneChanged}
       />
     </Canvas>

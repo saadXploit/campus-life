@@ -6,6 +6,7 @@ import { openNotificationsAction, type GameNotification } from "./wallet-actions
 const ICONS: Record<string, string> = {
   transfer_received: "💸",
   admin_adjustment: "🏛️",
+  fight: "👊",
 };
 
 function timeAgo(iso: string): string {

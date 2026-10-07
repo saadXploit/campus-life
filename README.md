@@ -13,6 +13,8 @@ A multiplayer university life-simulation game. Next.js (App Router) + TypeScript
 
 - Stage 5A (real time): the game runs on real Nigerian time (WAT) for everyone. Activities take real minutes, sleep lasts as long as you like and restores energy with real time asleep, energy-giving activities have cooldowns. The whole game screen loads in one database call and every action is one call.
 
+- Stage 5B (social places): real players appear where they are (rooms and around campus); talk, toast, dance, high five, study together and fight depending on the place; bonds between players; local chat with speech bubbles; block and report; moderator reports page; live-generated ambient sound for every place.
+
 The long-term goal is an explorable 3D multiplayer campus. All game rules live in the database (Postgres functions), so the 3D client can be added without rewriting them.
 
 ## How the game stays fair

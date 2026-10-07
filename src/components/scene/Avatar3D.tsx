@@ -93,6 +93,36 @@ export default function Avatar3D({
         headX = 0.25 + Math.sin(t * 2) * 0.08;
         break;
       }
+      case "talk": {
+        // Hands moving while chatting.
+        armLX = -0.5 + Math.sin(t * 5) * 0.35;
+        armRX = -0.3 + Math.sin(t * 4 + 2) * 0.3;
+        armLZ = 0.25;
+        armRZ = -0.25;
+        headX = Math.sin(t * 3) * 0.1;
+        break;
+      }
+      case "toast": {
+        // Glass raised high.
+        armRX = -2.7 + Math.sin(t * 3) * 0.08;
+        armRZ = -0.15;
+        armLX = -0.4;
+        headX = -0.15;
+        break;
+      }
+      case "fight": {
+        // Alternating punches, body bouncing.
+        const s = Math.sin(t * 12);
+        armLX = -1.5 + Math.max(0, s) * -0.2;
+        armRX = -1.5 + Math.max(0, -s) * -0.2;
+        armLZ = 0.15 + Math.max(0, s) * 0.2;
+        armRZ = -0.15 - Math.max(0, -s) * 0.2;
+        bodyY = Math.abs(Math.sin(t * 6)) * 0.06;
+        bodyTilt = 0.15;
+        legLX = 0.25;
+        legRX = -0.25;
+        break;
+      }
       case "sit": {
         // Seated (on a chair at seat height 0.45), hands busy at a table.
         bodyY = -0.33;

@@ -16,6 +16,7 @@ import { lightingFor } from "@/lib/game/lighting";
 import { seededRandom } from "@/lib/game/worldLayout";
 import type { WorldAvatar } from "./CampusWorld";
 import { makeLabelTexture } from "./labels";
+import { Bubble, OtherPlayer, type ShownPerson } from "./People";
 
 type V3 = [number, number, number];
 
@@ -450,7 +451,17 @@ function HealthRoom() {
 
 // ---------- Player inside a room ----------
 
-function InteriorPlayer({ avatar, spot }: { avatar: WorldAvatar; spot: Spot }) {
+function InteriorPlayer({
+  avatar,
+  spot,
+  bubble,
+  poseOverride,
+}: {
+  avatar: WorldAvatar;
+  spot: Spot;
+  bubble: string | null;
+  poseOverride: Pose | null;
+}) {
   const group = useRef<Group>(null);
   const shadow = useRef<Mesh>(null);
   const pos = useRef({ x: spot.x, y: spot.y, z: spot.z, heading: spot.heading });
@@ -504,8 +515,9 @@ function InteriorPlayer({ avatar, spot }: { avatar: WorldAvatar; spot: Spot }) {
           hairStyle={avatar.hairStyle}
           hairColor={avatar.hairColor}
           outfit={avatar.outfit}
-          action={pose}
+          action={pose === "walk" ? pose : (poseOverride ?? pose)}
         />
+        {bubble && <Bubble text={bubble} />}
       </group>
       <mesh ref={shadow} rotation={[-Math.PI / 2, 0, 0]}>
         <circleGeometry args={[0.4, 24]} />
@@ -535,6 +547,10 @@ export default function InteriorScene({
   hour,
   primary,
   secondary,
+  guests,
+  selfBubble,
+  selfPose,
+  onSelectPerson,
 }: {
   kind: string;
   avatar: WorldAvatar;
@@ -542,6 +558,12 @@ export default function InteriorScene({
   hour: number;
   primary: string;
   secondary: string;
+  /** Other real players in this room, already placed. */
+  guests: ShownPerson[];
+  selfBubble: string | null;
+  /** A short interaction pose (toast, fight...) played where the player stands. */
+  selfPose: Pose | null;
+  onSelectPerson: (id: string) => void;
 }) {
   const light = lightingFor(hour);
   const club = kind === "clubhouse";
@@ -568,7 +590,10 @@ export default function InteriorScene({
       {kind === "clubhouse" && <ClubRoom />}
       {kind === "health" && <HealthRoom />}
 
-      <InteriorPlayer avatar={avatar} spot={spot} />
+      {guests.map((g) => (
+        <OtherPlayer key={g.id} p={g} onSelect={onSelectPerson} />
+      ))}
+      <InteriorPlayer avatar={avatar} spot={spot} bubble={selfBubble} poseOverride={selfPose} />
       <CameraRig />
     </Canvas>
   );
