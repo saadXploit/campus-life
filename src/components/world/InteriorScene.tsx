@@ -11,6 +11,7 @@ import {
   type MeshStandardMaterial,
 } from "three";
 import Avatar3D from "@/components/scene/Avatar3D";
+import type { GameAd } from "@/lib/game/gameTypes";
 import { ROOM, type Pose, type Spot } from "@/lib/game/interiors";
 import { lightingFor } from "@/lib/game/lighting";
 import { seededRandom } from "@/lib/game/worldLayout";
@@ -401,7 +402,7 @@ function DanceFloor() {
   );
 }
 
-function ClubRoom() {
+function ClubRoom({ song }: { song: GameAd | null }) {
   return (
     <>
       <Shell wall="#1a1426" floor="#111018" />
@@ -422,7 +423,14 @@ function ClubRoom() {
       {[0.1, 0.6, 1.1, 1.6].map((z, i) => (
         <Cyl key={z} p={[-4.3, 1.3, z]} r={0.06} h={0.3} c={["#22c55e", "#f59e0b", "#ef4444", "#38bdf8"][i]} />
       ))}
-      <WallText text="CLUB HOUSE" p={[0, 2.7, -3.93]} w={3} bg="#7e22ce" fg="#ffffff" />
+      <WallText text="CLUB HOUSE" p={[0, 3.1, -3.93]} w={2.6} bg="#7e22ce" fg="#ffffff" />
+      <WallText
+        text={song ? `🎵 ${song.headline}${song.subline ? " · " + song.subline : ""}` : "🎵 Campus Life Radio"}
+        p={[0, 2.35, -3.93]}
+        w={4.6}
+        bg="#0f172a"
+        fg="#e879f9"
+      />
     </>
   );
 }
@@ -551,6 +559,7 @@ export default function InteriorScene({
   selfBubble,
   selfPose,
   onSelectPerson,
+  song,
 }: {
   kind: string;
   avatar: WorldAvatar;
@@ -564,6 +573,8 @@ export default function InteriorScene({
   /** A short interaction pose (toast, fight...) played where the player stands. */
   selfPose: Pose | null;
   onSelectPerson: (id: string) => void;
+  /** The sponsored song on the club screen, or null for the game's own radio. */
+  song: GameAd | null;
 }) {
   const light = lightingFor(hour);
   const club = kind === "clubhouse";
@@ -587,7 +598,7 @@ export default function InteriorScene({
       {kind === "cafeteria" && <CafeteriaRoom secondary={secondary} />}
       {kind === "library" && <LibraryRoom primary={primary} />}
       {kind === "faculty" && <FacultyRoom primary={primary} />}
-      {kind === "clubhouse" && <ClubRoom />}
+      {kind === "clubhouse" && <ClubRoom song={song} />}
       {kind === "health" && <HealthRoom />}
 
       {guests.map((g) => (

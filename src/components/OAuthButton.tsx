@@ -28,7 +28,11 @@ export default function OAuthButton({ provider, label, callbackPath }: Props) {
     const supabase = createClient();
     const { error } = await supabase.auth.signInWithOAuth({
       provider,
-      options: { redirectTo: `${window.location.origin}${callbackPath}` },
+      options: {
+        redirectTo: `${window.location.origin}${callbackPath}`,
+        // Always let the player choose which Google account to use.
+        ...(provider === "google" ? { queryParams: { prompt: "select_account" } } : {}),
+      },
     });
     if (error) {
       setError("Could not start sign-in. Please try again.");

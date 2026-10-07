@@ -35,3 +35,55 @@ export function makeLabelTexture(
   texture.anisotropy = 4;
   return { texture, aspect: width / height };
 }
+
+/** An ad poster: big headline, smaller line, and a clear "Sponsored" label. */
+export function makeAdTexture(
+  headline: string,
+  subline: string | null,
+  bg: string,
+  fg: string,
+  advertiser: string | null
+): { texture: CanvasTexture; aspect: number } {
+  const width = 1024;
+  const height = 320;
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height;
+  const ctx = canvas.getContext("2d")!;
+
+  ctx.fillStyle = bg;
+  ctx.fillRect(0, 0, width, height);
+  ctx.fillStyle = fg;
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+
+  const fit = (text: string, start: number, max: number) => {
+    let size = start;
+    ctx.font = `900 ${size}px system-ui, sans-serif`;
+    while (ctx.measureText(text).width > max && size > 24) {
+      size -= 4;
+      ctx.font = `900 ${size}px system-ui, sans-serif`;
+    }
+  };
+
+  fit(headline.toUpperCase(), 120, width - 80);
+  ctx.fillText(headline.toUpperCase(), width / 2, subline ? 120 : 150);
+  if (subline) {
+    fit(subline, 60, width - 120);
+    ctx.globalAlpha = 0.85;
+    ctx.fillText(subline, width / 2, 220);
+    ctx.globalAlpha = 1;
+  }
+  if (advertiser) {
+    ctx.font = "600 28px system-ui, sans-serif";
+    ctx.textAlign = "right";
+    ctx.globalAlpha = 0.75;
+    ctx.fillText(`Sponsored · ${advertiser}`, width - 24, height - 26);
+    ctx.globalAlpha = 1;
+  }
+
+  const texture = new CanvasTexture(canvas);
+  texture.colorSpace = SRGBColorSpace;
+  texture.anisotropy = 4;
+  return { texture, aspect: width / height };
+}

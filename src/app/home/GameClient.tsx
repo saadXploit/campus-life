@@ -20,6 +20,7 @@ import type { ShownPerson } from "@/components/world/People";
 import type { AmbientKind } from "@/lib/audio/ambient";
 import type {
   GameActivity,
+  GameAd,
   GameDynamic,
   GameInteraction,
   GameState,
@@ -40,6 +41,7 @@ import { lightingFor } from "@/lib/game/lighting";
 import { formatClock, formatDuration, lagosDateLabel, lagosHour } from "@/lib/game/time";
 import { travelEnergy } from "@/lib/game/travel";
 import { formatNaira } from "@/lib/money";
+import AdCard from "./AdCard";
 import NotificationsPanel from "./NotificationsPanel";
 import PlayerCard from "./PlayerCard";
 import WalletPanel from "./WalletPanel";
@@ -50,6 +52,7 @@ import {
   wakeUpAction,
   type ActionResult,
 } from "./actions";
+import { adViewAction } from "./ad-actions";
 import { blockAction, interactAction, reportAction, sayAction, snapshotAction } from "./social-actions";
 
 function Loading() {
@@ -234,7 +237,7 @@ type Effect = { pose: Pose | null; bubble: string; key: number };
 type FeedLine = { id: number; text: string };
 
 export default function GameClient({ game }: { game: GameState }) {
-  const { locations, activities, interactions, enrollment } = game;
+  const { locations, activities, interactions, enrollment, ads } = game;
   const me = game.player.id;
   const university = enrollment.university;
   const [, startTransition] = useTransition();
@@ -266,6 +269,11 @@ export default function GameClient({ game }: { game: GameState }) {
   const [pendingInteraction, setPendingInteraction] = useState<string | null>(null);
   const [chat, setChat] = useState("");
   const [muted, setMuted] = useState(false);
+
+  // Ads: which one is showing rotates every 30 seconds; views are counted once per ad.
+  const [adRotation, setAdRotation] = useState(0);
+  const [openAd, setOpenAd] = useState<GameAd | null>(null);
+  const viewedAds = useRef(new Set<string>());
   const lastEventId = useRef(0);
   const handled = useRef(new Set<number>());
   const effectKey = useRef(0);
@@ -302,6 +310,12 @@ export default function GameClient({ game }: { game: GameState }) {
     const t = setTimeout(() => setToast(null), 2600);
     return () => clearTimeout(t);
   }, [toast]);
+
+  useEffect(() => {
+    if (ads.length < 2) return;
+    const t = setInterval(() => setAdRotation((r) => r + 1), 30_000);
+    return () => clearInterval(t);
+  }, [ads.length]);
 
   function apply(result: ActionResult): boolean {
     if (result.error || !result.dynamic) {
@@ -483,6 +497,31 @@ export default function GameClient({ game }: { game: GameState }) {
     : atCheckedInPlace && (zonePlace?.kind === "sports" || zonePlace?.kind === "market")
       ? (zonePlace.kind as AmbientKind)
       : "outdoor";
+
+  const songs = ads.filter((a) => a.placement === "club_song");
+  const song = songs.length ? songs[adRotation % songs.length] : null;
+  const products = ads.filter((a) => a.placement === "market_product");
+  const atMarket = atCheckedInPlace && zonePlace?.kind === "market";
+  const billboardsShowing = ads.filter((a) => a.placement === "billboard");
+
+  // Count an ad as seen when it is actually on screen.
+  const showingAdIds = (
+    roomKind === "clubhouse"
+      ? song
+        ? [song.id]
+        : []
+      : roomKind
+        ? []
+        : [...billboardsShowing.map((a) => a.id), ...(atMarket ? products.map((a) => a.id) : [])]
+  ).join(",");
+  useEffect(() => {
+    if (!showingAdIds) return;
+    for (const id of showingAdIds.split(",")) {
+      if (viewedAds.current.has(id)) continue;
+      viewedAds.current.add(id);
+      void adViewAction(id);
+    }
+  }, [showingAdIds]);
 
   // ---------- Actions ----------
 
@@ -760,6 +799,7 @@ export default function GameClient({ game }: { game: GameState }) {
             selfBubble={myEffect?.bubble ?? null}
             selfPose={current || asleep ? null : (myEffect?.pose ?? null)}
             onSelectPerson={setSelected}
+            song={song}
           />
         ) : webgl ? (
           <CampusWorld
@@ -776,6 +816,9 @@ export default function GameClient({ game }: { game: GameState }) {
             crowd={crowd}
             selfBubble={myEffect?.bubble ?? null}
             onSelectPerson={setSelected}
+            ads={ads}
+            adRotation={adRotation}
+            onSelectAd={setOpenAd}
           />
         ) : null}
       </div>
@@ -958,6 +1001,22 @@ export default function GameClient({ game }: { game: GameState }) {
                     Leave
                   </button>
                 </div>
+                {roomKind === "clubhouse" && (
+                  <button
+                    type="button"
+                    onClick={() => song && setOpenAd(song)}
+                    className="mt-3 flex w-full items-center gap-2 rounded-xl bg-fuchsia-500/10 px-3 py-2 text-left text-sm"
+                  >
+                    <span className="text-lg">🎵</span>
+                    <span className="min-w-0 flex-1 truncate">
+                      Now playing:{" "}
+                      <span className="font-bold">
+                        {song ? `${song.headline}${song.subline ? " · " + song.subline : ""}` : "Campus Life Radio"}
+                      </span>
+                    </span>
+                    {song && <span className="text-[10px] text-zinc-400">Sponsored</span>}
+                  </button>
+                )}
                 {activityList}
                 {socialBlock}
               </>
@@ -965,6 +1024,26 @@ export default function GameClient({ game }: { game: GameState }) {
               <>
                 <p className="text-xs font-semibold tracking-[0.2em] text-emerald-300">YOU ARE AT</p>
                 <p className="text-lg font-extrabold">{zonePlace.name}</p>
+                {atMarket && products.length > 0 && (
+                  <div className="mt-3">
+                    <p className="text-xs text-zinc-400">Featured at the market · Sponsored</p>
+                    <div className="mt-1 flex gap-2 overflow-x-auto pb-1">
+                      {products.map((ad) => (
+                        <button
+                          key={ad.id}
+                          type="button"
+                          onClick={() => setOpenAd(ad)}
+                          className="w-40 shrink-0 rounded-xl p-3 text-left"
+                          style={{ backgroundColor: ad.bg_color, color: ad.fg_color }}
+                        >
+                          <p className="truncate text-sm font-extrabold">{ad.headline}</p>
+                          {ad.price_text && <p className="text-xs font-bold">{ad.price_text}</p>}
+                          <p className="truncate text-[10px] opacity-80">{ad.advertiser}</p>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
                 {activityList}
                 {socialBlock}
               </>
@@ -1040,6 +1119,8 @@ export default function GameClient({ game }: { game: GameState }) {
           onClose={() => setSelected(null)}
         />
       )}
+
+      {openAd && <AdCard ad={openAd} onClose={() => setOpenAd(null)} />}
 
       {panel === "wallet" && (
         <WalletPanel

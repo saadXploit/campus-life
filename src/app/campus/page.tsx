@@ -51,6 +51,8 @@ export default async function CampusPage() {
             energy={game.state.energy}
             primary={university.primary_color}
             secondary={university.secondary_color}
+            ads={game.ads}
+            serverTime={game.server_time}
           />
         </div>
       </div>

@@ -15,6 +15,8 @@ A multiplayer university life-simulation game. Next.js (App Router) + TypeScript
 
 - Stage 5B (social places): real players appear where they are (rooms and around campus); talk, toast, dance, high five, study together and fight depending on the place; bonds between players; local chat with speech bubbles; block and report; moderator reports page; live-generated ambient sound for every place.
 
+- Stage 6A (ads and 3D map): admin-managed ads (billboards, club songs, market products) with schedules, campus targeting, once-per-day view and click counts; a 3D aerial campus map; login page shows who is signed in and lets you switch accounts.
+
 The long-term goal is an explorable 3D multiplayer campus. All game rules live in the database (Postgres functions), so the 3D client can be added without rewriting them.
 
 ## How the game stays fair

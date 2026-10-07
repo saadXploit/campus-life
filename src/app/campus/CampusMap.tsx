@@ -1,20 +1,23 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import dynamic from "next/dynamic";
+import { useEffect, useRef, useState, useTransition, type PointerEvent, type WheelEvent } from "react";
 import { useRouter } from "next/navigation";
 import { AnimatePresence, motion } from "framer-motion";
+import type { CameraControl } from "@/components/world/CampusOverview";
+import type { GameAd, GameLocation } from "@/lib/game/gameTypes";
+import { lagosHour } from "@/lib/game/time";
 import { travelEnergy } from "@/lib/game/travel";
+import AdCard from "../home/AdCard";
 import { travelAction } from "../home/actions";
+import { snapshotAction } from "../home/social-actions";
 
-export type MapLocation = {
-  id: string;
-  name: string;
-  kind: string;
-  description: string;
-  map_x: number;
-  map_y: number;
-  has_billboard: boolean;
-};
+const CampusOverview = dynamic(() => import("@/components/world/CampusOverview"), {
+  ssr: false,
+  loading: () => (
+    <div className="flex h-full items-center justify-center text-sm text-zinc-400">Loading the map...</div>
+  ),
+});
 
 const ICONS: Record<string, string> = {
   hostel: "🏠",
@@ -27,28 +30,57 @@ const ICONS: Record<string, string> = {
   health: "🏥",
 };
 
+function detectWebGL(): boolean {
+  try {
+    const canvas = document.createElement("canvas");
+    return Boolean(canvas.getContext("webgl2") || canvas.getContext("webgl"));
+  } catch {
+    return false;
+  }
+}
+
 export default function CampusMap({
   locations,
   currentKind,
   energy,
   primary,
   secondary,
+  ads,
+  serverTime,
 }: {
-  locations: MapLocation[];
+  locations: GameLocation[];
   currentKind: string | null;
   energy: number;
   primary: string;
   secondary: string;
+  ads: GameAd[];
+  serverTime: string;
 }) {
   const router = useRouter();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
+  const [webgl, setWebgl] = useState<boolean | null>(null);
+  const [counts, setCounts] = useState<Record<string, number>>({});
+  const [openAd, setOpenAd] = useState<GameAd | null>(null);
+  const control = useRef<CameraControl>({ yaw: 0.6, zoom: 1, moved: 0 });
+  const drag = useRef<{ x: number; id: number } | null>(null);
+  const hour = lagosHour(Date.parse(serverTime));
+
+  useEffect(() => {
+    const t = setTimeout(() => setWebgl(detectWebGL()), 0);
+    // How many people are at each place right now.
+    snapshotAction(0).then((snap) => {
+      if (!snap) return;
+      const c: Record<string, number> = {};
+      for (const p of snap.people) c[p.location_kind] = (c[p.location_kind] ?? 0) + 1;
+      setCounts(c);
+    });
+    return () => clearTimeout(t);
+  }, []);
 
   const current = locations.find((l) => l.kind === currentKind) ?? null;
   const selected = locations.find((l) => l.id === selectedId) ?? null;
-  const hub = locations.find((l) => l.kind === "faculty") ?? null;
-
   const cost = current && selected ? travelEnergy(current, selected) : 0;
   const enoughEnergy = energy >= cost;
 
@@ -66,80 +98,86 @@ export default function CampusMap({
     });
   }
 
+  function down(e: PointerEvent<HTMLDivElement>) {
+    drag.current = { x: e.clientX, id: e.pointerId };
+    control.current.moved = 0;
+  }
+  function move(e: PointerEvent<HTMLDivElement>) {
+    if (!drag.current || drag.current.id !== e.pointerId) return;
+    const dx = e.clientX - drag.current.x;
+    drag.current.x = e.clientX;
+    control.current.yaw -= dx * 0.008;
+    control.current.moved += Math.abs(dx);
+  }
+  function up() {
+    drag.current = null;
+  }
+  function wheel(e: WheelEvent<HTMLDivElement>) {
+    control.current.zoom = Math.max(0.45, Math.min(1.5, control.current.zoom + e.deltaY * 0.001));
+  }
+  function zoomBy(d: number) {
+    control.current.zoom = Math.max(0.45, Math.min(1.5, control.current.zoom + d));
+  }
+
   return (
     <>
       <div
-        className="relative aspect-[4/5] w-full overflow-hidden rounded-3xl border border-white/10"
-        style={{ background: `radial-gradient(circle at 50% 40%, ${primary}66, #0b1020 78%)` }}
+        className="relative h-[62dvh] w-full touch-none overflow-hidden rounded-3xl border border-white/10"
+        onPointerDown={down}
+        onPointerMove={move}
+        onPointerUp={up}
+        onPointerCancel={up}
+        onWheel={wheel}
       >
-        <svg
-          className="absolute inset-0 h-full w-full"
-          viewBox="0 0 100 100"
-          preserveAspectRatio="none"
-          aria-hidden="true"
-        >
-          {hub &&
-            locations
-              .filter((l) => l.id !== hub.id)
-              .map((l) => (
-                <line
-                  key={l.id}
-                  x1={hub.map_x}
-                  y1={hub.map_y}
-                  x2={l.map_x}
-                  y2={l.map_y}
-                  stroke={secondary}
-                  strokeOpacity="0.35"
-                  strokeWidth="1.5"
-                  strokeDasharray="3 3"
-                  vectorEffect="non-scaling-stroke"
-                />
-              ))}
-        </svg>
-
-        {locations.map((l) => {
-          const isCurrent = current?.id === l.id;
-          return (
-            <button
-              key={l.id}
-              type="button"
-              onClick={() => {
-                setSelectedId(l.id);
-                setError(null);
-              }}
-              className="absolute -translate-x-1/2 -translate-y-1/2 text-center"
-              style={{ left: `${l.map_x}%`, top: `${l.map_y}%` }}
-            >
-              <motion.span
-                animate={isCurrent ? { scale: [1, 1.12, 1] } : undefined}
-                transition={isCurrent ? { duration: 1.6, repeat: Infinity } : undefined}
-                className={
-                  "relative flex h-12 w-12 items-center justify-center rounded-full border-2 text-2xl backdrop-blur " +
-                  (isCurrent
-                    ? "border-amber-400 bg-amber-400/25"
-                    : selectedId === l.id
-                      ? "border-white bg-white/20"
-                      : "border-white/25 bg-black/30")
-                }
+        {webgl === false ? (
+          <div className="grid h-full grid-cols-2 gap-2 overflow-y-auto p-3">
+            {locations.map((l) => (
+              <button
+                key={l.id}
+                type="button"
+                onClick={() => setSelectedId(l.id)}
+                className="rounded-xl bg-white/5 p-3 text-left text-sm font-semibold"
               >
-                {ICONS[l.kind]}
-                {l.has_billboard && (
-                  <span className="absolute -right-1 -top-1 text-xs" aria-label="Billboard">
-                    🪧
-                  </span>
-                )}
-              </motion.span>
-              <span className="mt-1 block max-w-[4.5rem] text-[10px] font-semibold leading-tight text-zinc-100">
-                {l.name}
-              </span>
-            </button>
-          );
-        })}
-      </div>
+                {ICONS[l.kind]} {l.name}
+                {l.kind === currentKind && <span className="block text-xs text-amber-300">You are here</span>}
+              </button>
+            ))}
+          </div>
+        ) : webgl ? (
+          <CampusOverview
+            locations={locations}
+            primary={primary}
+            secondary={secondary}
+            hour={hour}
+            ads={ads}
+            currentKind={currentKind}
+            selectedId={selectedId}
+            counts={counts}
+            control={control}
+            onSelect={(id) => {
+              setSelectedId(id);
+              setError(null);
+            }}
+            onSelectAd={setOpenAd}
+          />
+        ) : null}
 
-      <p className="mt-3 text-center text-xs text-zinc-500">
-        Tap a place to see how far it is.
-      </p>
+        {webgl && (
+          <div className="pointer-events-none absolute inset-x-0 bottom-0 flex items-end justify-between p-3">
+            <p className="rounded-full bg-black/50 px-3 py-1 text-xs text-zinc-200 backdrop-blur">
+              Drag to turn · tap a building
+            </p>
+            <div className="pointer-events-auto flex flex-col gap-1">
+              <button type="button" onClick={() => zoomBy(-0.15)} aria-label="Zoom in" className="h-9 w-9 rounded-full bg-black/50 text-lg backdrop-blur">
+                +
+              </button>
+              <button type="button" onClick={() => zoomBy(0.15)} aria-label="Zoom out" className="h-9 w-9 rounded-full bg-black/50 text-lg backdrop-blur">
+                −
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
 
       <AnimatePresence>
         {selected && (
@@ -158,44 +196,35 @@ export default function CampusMap({
                     {ICONS[selected.kind]} {selected.name}
                   </p>
                   <p className="mt-1 text-sm text-zinc-400">{selected.description}</p>
+                  {(counts[selected.kind] ?? 0) > 0 && (
+                    <p className="mt-1 text-xs text-emerald-300">👥 {counts[selected.kind]} here now</p>
+                  )}
                 </div>
-                <button
-                  type="button"
-                  onClick={() => setSelectedId(null)}
-                  aria-label="Close"
-                  className="text-lg text-zinc-400"
-                >
+                <button type="button" onClick={() => setSelectedId(null)} aria-label="Close" className="text-lg text-zinc-400">
                   ✕
                 </button>
               </div>
 
-              {selected.has_billboard && (
-                <p className="mt-2 text-xs text-zinc-500">🪧 A billboard stands here.</p>
-              )}
-
               {selected.id === current?.id ? (
-                <p className="mt-4 rounded-xl bg-emerald-400/10 p-3 text-center text-sm text-emerald-300">
-                  You are here.
-                </p>
+                <button
+                  type="button"
+                  onClick={() => router.push("/home")}
+                  className="mt-4 w-full rounded-2xl bg-emerald-500/20 py-4 font-bold text-emerald-200"
+                >
+                  You are here · back to the game
+                </button>
               ) : (
                 <>
-                  <div className="mt-4 rounded-xl bg-white/5 p-3 text-center text-sm">
-                    <p className="text-xs text-zinc-500">Energy to walk there</p>
-                    <p className="font-bold">-{cost}</p>
-                  </div>
-
+                  <p className="mt-4 text-center text-sm text-zinc-300">⚡ -{cost} energy to walk there</p>
                   {!enoughEnergy && (
-                    <p className="mt-3 text-center text-sm text-amber-300">
-                      Too tired to walk that far.
-                    </p>
+                    <p className="mt-2 text-center text-sm text-amber-300">Too tired to walk that far.</p>
                   )}
-                  {error && <p className="mt-3 text-center text-sm text-red-300">{error}</p>}
-
+                  {error && <p className="mt-2 text-center text-sm text-red-300">{error}</p>}
                   <button
                     type="button"
                     onClick={go}
                     disabled={pending || !enoughEnergy}
-                    className="mt-4 w-full rounded-2xl bg-gradient-to-r from-amber-400 to-orange-500 py-4 text-base font-extrabold text-black disabled:opacity-40 active:scale-95"
+                    className="mt-3 w-full rounded-2xl bg-gradient-to-r from-amber-400 to-orange-500 py-4 text-base font-extrabold text-black disabled:opacity-40 active:scale-95"
                   >
                     {pending ? "Walking..." : "Go there"}
                   </button>
@@ -205,6 +234,8 @@ export default function CampusMap({
           </motion.div>
         )}
       </AnimatePresence>
+
+      {openAd && <AdCard ad={openAd} onClose={() => setOpenAd(null)} />}
     </>
   );
 }

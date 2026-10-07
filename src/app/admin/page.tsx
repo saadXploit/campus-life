@@ -52,6 +52,14 @@ export default async function AdminHomePage() {
               </span>
             </Link>
           )}
+          {can(role, "ads.manage") && (
+            <Link href="/admin/ads" className={card}>
+              Ads
+              <span className="block text-sm font-normal text-zinc-400">
+                Billboards, club songs and market products
+              </span>
+            </Link>
+          )}
           {can(role, "settings.manage") && (
             <Link href="/admin/settings" className={card}>
               Game settings

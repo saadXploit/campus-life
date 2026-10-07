@@ -79,6 +79,11 @@ describe("permissions", () => {
     expect(can("ADMIN", "economy.inject")).toBe(false);
   });
 
+  it("lets ADMIN and above manage ads", () => {
+    expect(can("ADMIN", "ads.manage")).toBe(true);
+    expect(can("MODERATOR", "ads.manage")).toBe(false);
+  });
+
   it("lets ADMIN ban but not MODERATOR", () => {
     expect(can("ADMIN", "players.ban")).toBe(true);
     expect(can("MODERATOR", "players.ban")).toBe(false);

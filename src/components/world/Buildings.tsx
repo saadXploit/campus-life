@@ -2,8 +2,9 @@
 
 import { useEffect, useMemo } from "react";
 import type { ThreeEvent } from "@react-three/fiber";
+import type { GameAd } from "@/lib/game/gameTypes";
 import { footprintOf } from "@/lib/game/worldLayout";
-import { makeLabelTexture } from "./labels";
+import { makeAdTexture, makeLabelTexture } from "./labels";
 
 export type BuildingProps = {
   kind: string;
@@ -14,7 +15,12 @@ export type BuildingProps = {
   secondary: string;
   night: boolean;
   billboard: boolean;
+  /** The sponsored ad on this billboard, or null for the game's own poster. */
+  billboardAd: GameAd | null;
+  /** Sponsored products shown on market stalls. */
+  products: GameAd[];
   onSelect: () => void;
+  onSelectAd: (ad: GameAd) => void;
 };
 
 const WALL = "#efe6d6";
@@ -100,29 +106,71 @@ function Sign({ text, y, accent }: { text: string; y: number; accent: string }) 
   );
 }
 
-function Billboard({ x, z, primary }: { x: number; z: number; primary: string }) {
-  const label = useMemo(
-    () => makeLabelTexture("LIVE YOUR CAMPUS LIFE", { bg: primary, accent: "#fbbf24" }),
-    [primary]
+function Billboard({
+  x,
+  z,
+  primary,
+  ad,
+  onSelectAd,
+}: {
+  x: number;
+  z: number;
+  primary: string;
+  ad: GameAd | null;
+  onSelectAd: (ad: GameAd) => void;
+}) {
+  // With no live ad, the game shows its own poster instead of an empty board.
+  const art = useMemo(
+    () =>
+      ad
+        ? makeAdTexture(ad.headline, ad.subline, ad.bg_color, ad.fg_color, ad.advertiser)
+        : makeAdTexture("Live your campus life", "Campus Life", primary, "#ffffff", null),
+    [ad, primary]
   );
-  useEffect(() => () => label.texture.dispose(), [label]);
+  useEffect(() => () => art.texture.dispose(), [art]);
+
+  function click(e: ThreeEvent<MouseEvent>) {
+    if (!ad) return;
+    e.stopPropagation();
+    onSelectAd(ad);
+  }
+
   return (
-    <group position={[x, 0, z]} rotation={[0, 0.35, 0]}>
-      {[-2.2, 2.2].map((px) => (
+    <group position={[x, 0, z]} rotation={[0, 0.35, 0]} onClick={click}>
+      {[-2.4, 2.4].map((px) => (
         <mesh key={px} position={[px, 2.5, 0]} castShadow>
           <cylinderGeometry args={[0.12, 0.12, 5, 8]} />
           <meshStandardMaterial color="#4b5563" />
         </mesh>
       ))}
-      <mesh position={[0, 5.3, 0]} castShadow>
-        <boxGeometry args={[6.4, 1.9, 0.2]} />
+      <mesh position={[0, 5.4, 0]} castShadow>
+        <boxGeometry args={[6.8, 2.3, 0.2]} />
         <meshStandardMaterial color="#111827" />
       </mesh>
-      <mesh position={[0, 5.3, 0.11]}>
-        <planeGeometry args={[6.1, 1.6]} />
-        <meshBasicMaterial map={label.texture} toneMapped={false} />
+      <mesh position={[0, 5.4, 0.11]}>
+        <planeGeometry args={[6.5, 6.5 / art.aspect]} />
+        <meshBasicMaterial map={art.texture} toneMapped={false} />
       </mesh>
     </group>
+  );
+}
+
+/** A small sponsored banner on the front of a market stall. */
+function StallBanner({ ad, onSelectAd }: { ad: GameAd; onSelectAd: (ad: GameAd) => void }) {
+  const art = useMemo(
+    () => makeAdTexture(ad.headline, ad.price_text ?? ad.subline, ad.bg_color, ad.fg_color, ad.advertiser),
+    [ad]
+  );
+  useEffect(() => () => art.texture.dispose(), [art]);
+  function click(e: ThreeEvent<MouseEvent>) {
+    e.stopPropagation();
+    onSelectAd(ad);
+  }
+  return (
+    <mesh position={[0, 1.75, 0.83]} onClick={click}>
+      <planeGeometry args={[3.4, 3.4 / art.aspect]} />
+      <meshBasicMaterial map={art.texture} toneMapped={false} />
+    </mesh>
   );
 }
 
@@ -226,7 +274,17 @@ function Cafeteria({ secondary, night }: { secondary: string; night: boolean }) 
   );
 }
 
-function Market({ primary, secondary }: { primary: string; secondary: string }) {
+function Market({
+  primary,
+  secondary,
+  products,
+  onSelectAd,
+}: {
+  primary: string;
+  secondary: string;
+  products: GameAd[];
+  onSelectAd: (ad: GameAd) => void;
+}) {
   const colors = [secondary, "#ef4444", "#22c55e", primary, "#3b82f6", "#f97316"];
   return (
     <>
@@ -249,6 +307,7 @@ function Market({ primary, secondary }: { primary: string; secondary: string }) 
               <coneGeometry args={[2.6, 0.9, 4]} />
               <meshStandardMaterial color={c} roughness={0.8} />
             </mesh>
+            {products[i] && <StallBanner ad={products[i]} onSelectAd={onSelectAd} />}
             {/* goods on the table */}
             {[-1, 0, 1].map((gx) => (
               <mesh key={gx} position={[gx, 1.15, 0]}>
@@ -370,7 +429,10 @@ export default function Building({
   secondary,
   night,
   billboard,
+  billboardAd,
+  products,
   onSelect,
+  onSelectAd,
 }: BuildingProps) {
   const f = footprintOf(kind);
 
@@ -386,13 +448,17 @@ export default function Building({
         {kind === "faculty" && <Faculty primary={primary} secondary={secondary} night={night} />}
         {kind === "library" && <Library primary={primary} night={night} />}
         {kind === "cafeteria" && <Cafeteria secondary={secondary} night={night} />}
-        {kind === "market" && <Market primary={primary} secondary={secondary} />}
+        {kind === "market" && (
+          <Market primary={primary} secondary={secondary} products={products} onSelectAd={onSelectAd} />
+        )}
         {kind === "sports" && <Sports />}
         {kind === "clubhouse" && <Clubhouse primary={primary} night={night} />}
         {kind === "health" && <Health night={night} />}
         <Sign text={name} y={Math.max(f.h, 3) + 2.2} accent={secondary} />
       </group>
-      {billboard && <Billboard x={x + f.w / 2 + 3} z={z + f.d / 2} primary={primary} />}
+      {billboard && (
+        <Billboard x={x + f.w / 2 + 3} z={z + f.d / 2} primary={primary} ad={billboardAd} onSelectAd={onSelectAd} />
+      )}
     </>
   );
 }

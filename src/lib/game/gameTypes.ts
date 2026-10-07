@@ -37,6 +37,20 @@ export type GameInteraction = {
   bond_delta: number;
 };
 
+/** A live sponsored placement. The link is only handed out when someone clicks. */
+export type GameAd = {
+  id: string;
+  placement: "billboard" | "club_song" | "market_product";
+  advertiser: string;
+  headline: string;
+  subline: string | null;
+  price_text: string | null;
+  bg_color: string;
+  fg_color: string;
+  has_link: boolean;
+  weight: number;
+};
+
 /** Another real player who is online at your university. */
 export type Person = {
   id: string;
@@ -105,6 +119,7 @@ export type GameState = GameDynamic & {
   locations: GameLocation[];
   activities: GameActivity[];
   interactions: GameInteraction[];
+  ads: GameAd[];
 };
 
 export type GameStateResult = GameState | { status: "no_player" | "not_enrolled" | "blocked" };
