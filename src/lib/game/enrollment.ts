@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 
 export type Enrollment = {
   level_year: number;
+  university_id: string;
   universities: {
     name: string;
     short_name: string;
@@ -17,7 +18,7 @@ export async function getMyEnrollment(): Promise<Enrollment | null> {
   const { data } = await supabase
     .from("enrollments")
     .select(
-      "level_year, universities(name, short_name, primary_color, secondary_color), courses(name)"
+      "level_year, university_id, universities(name, short_name, primary_color, secondary_color), courses(name)"
     )
     .eq("status", "active")
     .maybeSingle();

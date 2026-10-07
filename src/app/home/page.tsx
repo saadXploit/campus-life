@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { redirect } from "next/navigation";
 import Avatar from "@/components/Avatar";
 import Countdown from "@/components/Countdown";
@@ -102,10 +103,17 @@ export default async function HomePage() {
           <Meter label="Happiness" icon="😊" value={state.happiness} color="#e879f9" />
         </div>
 
-        <div className="rounded-2xl border border-dashed border-white/15 p-4 text-center text-sm text-zinc-400">
-          Your campus map and activities arrive in the next update. Lectures and your
-          timetable come with academics.
-        </div>
+        <Link
+          href="/campus"
+          className="block rounded-2xl bg-gradient-to-r from-amber-400 to-orange-500 py-4 text-center text-base font-extrabold text-black active:scale-95"
+        >
+          Open campus map
+        </Link>
+
+        <p className="text-center text-xs text-zinc-500">
+          Activities arrive in the next update. Lectures and your timetable come with
+          academics.
+        </p>
 
         <form action="/auth/signout" method="post" className="pt-2 text-center">
           <button
