@@ -1,3 +1,4 @@
+import { getMyEnrollment } from "@/lib/game/enrollment";
 import { redirect } from "next/navigation";
 import { requireUser } from "@/lib/auth/guards";
 import { getMyOpenApplication } from "@/lib/game/applications";
@@ -14,6 +15,7 @@ export default async function ApplyPage() {
 
   const player = await getMyPlayer();
   if (!player) redirect("/create");
+    if (await getMyEnrollment()) redirect("/welcome");
   if (await getMyOpenApplication()) redirect("/apply/status");
 
   const [catalog, universities] = await Promise.all([listCourseCatalog(), listUniversities()]);

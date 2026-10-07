@@ -3,7 +3,12 @@ import { createClient } from "@/lib/supabase/server";
 
 export type OpenApplication = {
   id: string;
-  status: "exam_pending" | "exam_in_progress" | "awaiting_result" | "decided";
+    status:
+    | "exam_pending"
+    | "exam_in_progress"
+    | "awaiting_result"
+    | "offer_pending"
+    | "decided";
   exam_opens_at: string;
   result_ready_at: string | null;
   application_choices: {

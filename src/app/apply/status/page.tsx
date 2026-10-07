@@ -14,7 +14,7 @@ export default async function ApplicationStatusPage() {
 
   const app = await getMyOpenApplication();
   if (!app) redirect("/apply");
-
+  if (app.status === "offer_pending") redirect("/apply/result");
   const courseName = app.application_choices[0]?.courses.name;
 
   return (
@@ -74,12 +74,11 @@ export default async function ApplicationStatusPage() {
             <>
               <p className="text-xs text-zinc-500">Your result will be ready in</p>
               <p className="mt-2 text-3xl font-extrabold">
-                <Countdown target={app.result_ready_at}>
-                  <span className="text-xl text-emerald-300">Your result is ready</span>
+                                <Countdown target={app.result_ready_at}>
+                  <Link href="/apply/result" className={primaryButton}>
+                    See my result
+                  </Link>
                 </Countdown>
-              </p>
-              <p className="mt-3 text-xs text-zinc-500">
-                The result screen arrives in the next update.
               </p>
             </>
           )}
