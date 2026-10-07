@@ -1,19 +1,5 @@
-do $$
-declare a boolean; b boolean; c boolean; d text;
-begin
-  a := public.rate_limit_hit('test-key', 2, 60);
-  b := public.rate_limit_hit('test-key', 2, 60);
-  c := public.rate_limit_hit('test-key', 2, 60);
-
-  begin
-    set local role authenticated;
-    perform public.rate_limit_hit('x', 1, 60);
-    reset role;
-    d := 'FAIL (a player could call it)';
-  exception when others then
-    reset role;
-    d := 'PASS (players cannot call it)';
-  end;
-
-  raise exception E'RESULTS (rolled back): first=%, second=%, third=% (expected true, true, false). %', a, b, c, d;
-end $$;
+-- CAMPUS LIFE: rate limits
+-- This file used to hold a one-off test script by mistake, and the real table and
+-- function were never saved. Superseded by 20261007000004_rate_limits.sql.
+-- Kept (empty) so the migration order stays the same.
+select 1;
