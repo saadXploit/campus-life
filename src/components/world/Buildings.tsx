@@ -462,3 +462,73 @@ export default function Building({
     </>
   );
 }
+
+const HALL_WALLS = ["#e7dcc8", "#d9e4ec", "#e8d8d0", "#dfe8d5", "#e9e1f0", "#f0e6cc", "#dbe2e8"];
+
+/** One faculty's building in the faculty district. Your own faculty gets a flag. */
+export function FacultyHall({
+  name,
+  x,
+  z,
+  w,
+  d,
+  h,
+  facing,
+  index,
+  primary,
+  secondary,
+  night,
+  mine,
+  onSelect,
+}: {
+  name: string;
+  x: number;
+  z: number;
+  w: number;
+  d: number;
+  h: number;
+  facing: number;
+  index: number;
+  primary: string;
+  secondary: string;
+  night: boolean;
+  mine: boolean;
+  onSelect: () => void;
+}) {
+  function click(e: ThreeEvent<MouseEvent>) {
+    e.stopPropagation();
+    onSelect();
+  }
+  return (
+    <group position={[x, 0, z]} rotation={[0, facing, 0]} onClick={click}>
+      <Block w={w} d={d} h={h} color={HALL_WALLS[index % HALL_WALLS.length]} />
+      <Roof w={w} d={d} y={h} color={mine ? secondary : primary} />
+      <Windows w={w - 2} h={h - 2.5} z={d / 2 + 0.01} rows={2} cols={4} y0={1.6} night={night} />
+      {[-1.4, 1.4].map((cx) => (
+        <mesh key={cx} position={[cx, 1.6, d / 2 + 0.8]} castShadow>
+          <cylinderGeometry args={[0.22, 0.25, 3.2, 10]} />
+          <meshStandardMaterial color="#f8f6f0" />
+        </mesh>
+      ))}
+      <mesh position={[0, 3.3, d / 2 + 0.8]} castShadow>
+        <boxGeometry args={[4, 0.4, 1.8]} />
+        <meshStandardMaterial color={mine ? secondary : "#d6d3d1"} />
+      </mesh>
+      <Door z={d / 2 + 0.02} color="#3f2a1d" />
+      <Sign text={name} y={h + 1.8} accent={mine ? "#fbbf24" : secondary} />
+      {mine && (
+        <group position={[w / 2 + 1, 0, d / 2]}>
+          <mesh position={[0, 3, 0]} castShadow>
+            <cylinderGeometry args={[0.07, 0.07, 6, 8]} />
+            <meshStandardMaterial color="#9ca3af" />
+          </mesh>
+          <mesh position={[0.75, 5.4, 0]}>
+            <boxGeometry args={[1.5, 0.9, 0.05]} />
+            <meshStandardMaterial color="#fbbf24" emissive="#fbbf24" emissiveIntensity={night ? 0.8 : 0.2} />
+          </mesh>
+          <Sign text="YOUR FACULTY" y={7.2} accent="#fbbf24" />
+        </group>
+      )}
+    </group>
+  );
+}

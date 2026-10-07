@@ -7,6 +7,15 @@ const ICONS: Record<string, string> = {
   transfer_received: "💸",
   admin_adjustment: "🏛️",
   fight: "👊",
+  friend_request: "🤝",
+  friend_accepted: "🤝",
+  asked_out: "💘",
+  dating: "💞",
+  declined: "🙅",
+  breakup: "💔",
+  gift: "🎁",
+  results: "📊",
+  graduated: "🎓",
 };
 
 function timeAgo(iso: string): string {

@@ -19,6 +19,9 @@ A multiplayer university life-simulation game. Next.js (App Router) + TypeScript
 
 - Stage 7A (academics): 10 universities (federal, state, private) with their own rules; courses per level and semester with weekly lectures at real Nigerian times; attendance, study, exam week, results (CA + exam, 5-point scale), GPA/CGPA, promotion to the next level; strikes declared by staff; private-university curfew fine.
 
+- Stage 7B (3D faculties): a 3D building for every faculty on campus (yours highlighted) and a lecture theatre with your department banner, projector screen and a lecturer during live lectures.
+- Stage 8A (friends, chats, dating): friend requests, private chats (friends only), group chats, campus chat, mute/block/report messages, opt-in 18+ dating with consent, one partner at a time, breakups and history, gifts.
+
 The long-term goal is an explorable 3D multiplayer campus. All game rules live in the database (Postgres functions), so the 3D client can be added without rewriting them.
 
 ## How the game stays fair

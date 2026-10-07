@@ -94,3 +94,65 @@ export function seededRandom(seed: number): () => number {
     return ((s >>> 0) % 100000) / 100000;
   };
 }
+
+// ---------- The faculty district ----------
+
+export type FacultyHall = { name: string; x: number; z: number; w: number; d: number; h: number };
+
+const HALL = { w: 9, d: 7, h: 6 };
+
+function boxesOverlap(a: Box, b: Box): boolean {
+  return a.minX < b.maxX && a.maxX > b.minX && a.minZ < b.maxZ && a.maxZ > b.minZ;
+}
+
+function segmentDistance(px: number, pz: number, a: { x: number; z: number }, b: { x: number; z: number }): number {
+  const dx = b.x - a.x;
+  const dz = b.z - a.z;
+  const len2 = dx * dx + dz * dz || 1;
+  const t = Math.max(0, Math.min(1, ((px - a.x) * dx + (pz - a.z) * dz) / len2));
+  return Math.hypot(px - (a.x + t * dx), pz - (a.z + t * dz));
+}
+
+/**
+ * Places one building per faculty around the main Faculty Block, never on top of
+ * another building, a billboard or a path, and never in front of the entrance.
+ * Faculties that do not fit are simply not drawn (the Faculty Block still works).
+ */
+export function placeFacultyHalls(
+  hub: { x: number; z: number },
+  faculties: string[],
+  blockers: Box[],
+  paths: { from: { x: number; z: number }; to: { x: number; z: number } }[]
+): FacultyHall[] {
+  const out: FacultyHall[] = [];
+  const taken: Box[] = [...blockers];
+  const edge = WORLD_HALF - 6;
+  for (const name of faculties) {
+    let placed = false;
+    for (const radius of [19, 27, 35, 43, 51]) {
+      for (let step = 0; step < 24 && !placed; step++) {
+        // Start behind the building (-z) and work round both sides. Close in, the front
+        // (where the entrance is) stays clear; further out it is fine.
+        const angle = Math.PI + (step % 2 === 0 ? 1 : -1) * Math.ceil(step / 2) * (Math.PI / 12);
+        const front = Math.abs(Math.atan2(Math.sin(angle), Math.cos(angle)));
+        if (front < Math.PI / 3 && radius < 27) continue;
+        const x = hub.x + Math.sin(angle) * radius;
+        const z = hub.z + Math.cos(angle) * radius;
+        if (Math.abs(x) > edge || Math.abs(z) > edge) continue;
+        const box: Box = {
+          minX: x - HALL.w / 2 - 2,
+          maxX: x + HALL.w / 2 + 2,
+          minZ: z - HALL.d / 2 - 2,
+          maxZ: z + HALL.d / 2 + 2,
+        };
+        if (taken.some((b) => boxesOverlap(box, b))) continue;
+        if (paths.some((p) => segmentDistance(x, z, p.from, p.to) < HALL.w / 2 + 3.5)) continue;
+        taken.push(box);
+        out.push({ name, x, z, ...HALL });
+        placed = true;
+      }
+      if (placed) break;
+    }
+  }
+  return out;
+}

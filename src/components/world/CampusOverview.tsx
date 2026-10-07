@@ -74,6 +74,8 @@ export default function CampusOverview({
   control,
   onSelect,
   onSelectAd,
+  faculties,
+  myFaculty,
 }: {
   locations: WorldLocation[];
   primary: string;
@@ -86,8 +88,10 @@ export default function CampusOverview({
   control: RefObject<CameraControl>;
   onSelect: (id: string | null) => void;
   onSelectAd: (ad: GameAd) => void;
+  faculties: string[];
+  myFaculty: string | null;
 }) {
-  const layout = useCampusLayout(locations);
+  const layout = useCampusLayout(locations, faculties);
   const light = lightingFor(hour);
   const current = layout.placed.find((p) => p.kind === currentKind) ?? null;
   const selected = layout.placed.find((p) => p.id === selectedId) ?? null;
@@ -115,6 +119,7 @@ export default function CampusOverview({
         onGround={() => tapped(() => onSelect(null))()}
         onSelectBuilding={(p) => tapped(() => onSelect(p.id))()}
         onSelectAd={(ad) => tapped(() => onSelectAd(ad))()}
+        myFaculty={myFaculty}
       />
 
       {layout.placed.map((p) => {

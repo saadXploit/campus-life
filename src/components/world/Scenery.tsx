@@ -9,11 +9,13 @@ import {
   entranceOf,
   footprintOf,
   obstacleOf,
+  placeFacultyHalls,
   seededRandom,
   toWorld,
   type Box,
+  type FacultyHall as Hall,
 } from "@/lib/game/worldLayout";
-import Building from "./Buildings";
+import Building, { FacultyHall } from "./Buildings";
 
 /**
  * The campus itself (ground, paths, trees, lamps, buildings), shared by the
@@ -46,7 +48,7 @@ function distanceToSegment(px: number, pz: number, a: Point, b: Point): number {
 }
 
 /** Where everything goes, worked out once from the locations in the database. */
-export function useCampusLayout(locations: WorldLocation[]) {
+export function useCampusLayout(locations: WorldLocation[], faculties: string[] = []) {
   const placed: Placed[] = useMemo(
     () =>
       locations.map((l) => {
@@ -56,17 +58,43 @@ export function useCampusLayout(locations: WorldLocation[]) {
     [locations]
   );
 
-  const obstacles = useMemo(
-    () => placed.map((p) => obstacleOf(p.kind, p.x, p.z)).filter((b): b is Box => b !== null),
-    [placed]
-  );
-
   const paths = useMemo(() => {
     const hub = placed.find((p) => p.kind === "faculty") ?? placed[0];
     return hub
       ? placed.filter((p) => p.id !== hub.id).map((p) => ({ from: hub.entrance, to: p.entrance }))
       : [];
   }, [placed]);
+
+  // One building per faculty, around the main Faculty Block.
+  const halls: (Hall & { facing: number })[] = useMemo(() => {
+    const hub = placed.find((p) => p.kind === "faculty");
+    if (!hub || faculties.length === 0) return [];
+    const blockers: Box[] = placed.map((p) => {
+      const f = footprintOf(p.kind);
+      return { minX: p.x - f.w / 2, maxX: p.x + f.w / 2, minZ: p.z - f.d / 2, maxZ: p.z + f.d / 2 };
+    });
+    // Billboards stand beside their building; keep them clear too.
+    for (const p of placed.filter((q) => q.has_billboard)) {
+      const f = footprintOf(p.kind);
+      const bx = p.x + f.w / 2 + 3;
+      const bz = p.z + f.d / 2;
+      blockers.push({ minX: bx - 4, maxX: bx + 4, minZ: bz - 2, maxZ: bz + 2 });
+    }
+    return placeFacultyHalls(hub, faculties, blockers, paths).map((h) => ({
+      ...h,
+      facing: Math.atan2(hub.x - h.x, hub.z - h.z),
+    }));
+  }, [placed, faculties, paths]);
+
+  const obstacles = useMemo(() => {
+    const boxes = placed.map((p) => obstacleOf(p.kind, p.x, p.z)).filter((b): b is Box => b !== null);
+    // Halls are turned to face the Faculty Block, so block a square that covers any angle.
+    for (const h of halls) {
+      const r = Math.max(h.w, h.d) / 2;
+      boxes.push({ minX: h.x - r, maxX: h.x + r, minZ: h.z - r, maxZ: h.z + r });
+    }
+    return boxes;
+  }, [placed, halls]);
 
   const lamps = useMemo(() => {
     const out: Point[] = [];
@@ -94,13 +122,14 @@ export function useCampusLayout(locations: WorldLocation[]) {
         return Math.abs(x - p.x) < f.w / 2 + 4 && Math.abs(z - p.z) < f.d / 2 + 8;
       });
       if (nearBuilding) continue;
+      if (halls.some((h) => Math.abs(x - h.x) < h.w / 2 + 4 && Math.abs(z - h.z) < h.d / 2 + 4)) continue;
       if (paths.some((path) => distanceToSegment(x, z, path.from, path.to) < 4)) continue;
       out.push({ x, z, s: 0.8 + rand() * 0.6 });
     }
     return out;
-  }, [placed, paths]);
+  }, [placed, paths, halls]);
 
-  return { placed, obstacles, paths, lamps, trees };
+  return { placed, obstacles, paths, lamps, trees, halls };
 }
 
 export function Ground({ onPoint }: { onPoint?: (x: number, z: number) => void }) {
@@ -210,6 +239,7 @@ export function CampusBase({
   onGround,
   onSelectBuilding,
   onSelectAd,
+  myFaculty = null,
 }: {
   layout: ReturnType<typeof useCampusLayout>;
   primary: string;
@@ -220,7 +250,10 @@ export function CampusBase({
   onGround?: (x: number, z: number) => void;
   onSelectBuilding: (p: Placed) => void;
   onSelectAd: (ad: GameAd) => void;
+  /** Your own faculty, highlighted in the faculty district. */
+  myFaculty?: string | null;
 }) {
+  const hub = layout.placed.find((p) => p.kind === "faculty") ?? null;
   const boards = billboardAds(layout.placed, ads, adRotation);
   const products = ads.filter((a) => a.placement === "market_product");
   return (
@@ -246,6 +279,24 @@ export function CampusBase({
           products={p.kind === "market" ? products : []}
           onSelect={() => onSelectBuilding(p)}
           onSelectAd={onSelectAd}
+        />
+      ))}
+      {layout.halls.map((h, i) => (
+        <FacultyHall
+          key={h.name}
+          name={h.name}
+          x={h.x}
+          z={h.z}
+          w={h.w}
+          d={h.d}
+          h={h.h}
+          facing={h.facing}
+          index={i}
+          primary={primary}
+          secondary={secondary}
+          night={night}
+          mine={h.name === myFaculty}
+          onSelect={() => hub && onSelectBuilding(hub)}
         />
       ))}
     </>

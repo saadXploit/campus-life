@@ -12,10 +12,14 @@ export default function PlayerCard({
   blockedReason,
   pendingKind,
   canReportMessage,
+  friendStatus,
   onInteract,
   onBlock,
   onReport,
   onClose,
+  onAddFriend,
+  onMessage,
+  onGift,
 }: {
   person: Person;
   placeName: string | null;
@@ -25,7 +29,11 @@ export default function PlayerCard({
   blockedReason: string | null;
   pendingKind: string | null;
   canReportMessage: boolean;
+  friendStatus: "none" | "pending" | "friends";
   onInteract: (kind: string) => void;
+  onAddFriend: () => void;
+  onMessage: () => void;
+  onGift: () => void;
   onBlock: () => void;
   onReport: (reason: string, details: string) => Promise<string | null>;
   onClose: () => void;
@@ -84,6 +92,28 @@ export default function PlayerCard({
 
         {mode === "main" && (
           <>
+            <div className="mt-4 flex gap-2 text-sm">
+              {friendStatus === "friends" ? (
+                <>
+                  <button type="button" onClick={onMessage} className="flex-1 rounded-xl bg-white/10 py-2 font-semibold">
+                    💬 Message
+                  </button>
+                  <button type="button" onClick={onGift} className="flex-1 rounded-xl bg-white/10 py-2 font-semibold">
+                    🎁 Gift
+                  </button>
+                </>
+              ) : friendStatus === "pending" ? (
+                <p className="flex-1 rounded-xl bg-white/5 py-2 text-center text-zinc-400">Friend request pending</p>
+              ) : (
+                <button
+                  type="button"
+                  onClick={onAddFriend}
+                  className="flex-1 rounded-xl bg-amber-400 py-2 font-bold text-black"
+                >
+                  ➕ Add friend
+                </button>
+              )}
+            </div>
             {blockedReason ? (
               <p className="mt-4 rounded-xl bg-white/5 p-3 text-center text-sm text-zinc-300">{blockedReason}</p>
             ) : interactions.length === 0 ? (

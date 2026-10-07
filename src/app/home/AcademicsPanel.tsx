@@ -9,7 +9,7 @@ import {
   slotLabel,
   type Academics,
 } from "@/lib/game/academics";
-import { formatDuration } from "@/lib/game/time";
+import { formatDuration, lagosDateLabel } from "@/lib/game/time";
 
 const TYPE_NOTE: Record<string, string> = {
   federal: "Federal university · low fees · lecturers can go on strike",
@@ -103,8 +103,10 @@ export default function AcademicsPanel({
             {!a.registered && (
               <p className="rounded-xl bg-white/5 p-3 text-sm text-zinc-300">
                 {c?.phase === "lectures"
-                  ? "You will be registered for this semester the next time you play."
-                  : "You are not registered this semester. Registration opens when the next semester's lectures start."}
+                  ? "You will be registered for this semester the next time you play. Attendance only counts from the day you join."
+                  : c
+                    ? `You joined after this semester's lectures ended. Your first lectures start on ${lagosDateLabel(Date.parse(c.holiday_end))}. Until then, explore campus, make friends and get ready.`
+                    : null}
               </p>
             )}
             {a.modules.map((m) => {

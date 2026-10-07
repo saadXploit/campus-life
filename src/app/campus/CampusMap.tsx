@@ -47,6 +47,8 @@ export default function CampusMap({
   secondary,
   ads,
   serverTime,
+  faculties,
+  myFaculty,
 }: {
   locations: GameLocation[];
   currentKind: string | null;
@@ -55,6 +57,8 @@ export default function CampusMap({
   secondary: string;
   ads: GameAd[];
   serverTime: string;
+  faculties: string[];
+  myFaculty: string | null;
 }) {
   const router = useRouter();
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -159,6 +163,8 @@ export default function CampusMap({
               setError(null);
             }}
             onSelectAd={setOpenAd}
+            faculties={faculties}
+            myFaculty={myFaculty}
           />
         ) : null}
 

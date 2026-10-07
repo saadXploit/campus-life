@@ -53,6 +53,8 @@ export default async function CampusPage() {
             secondary={university.secondary_color}
             ads={game.ads}
             serverTime={game.server_time}
+            faculties={game.faculties ?? []}
+            myFaculty={game.enrollment.faculty ?? null}
           />
         </div>
       </div>

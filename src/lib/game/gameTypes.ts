@@ -114,8 +114,12 @@ export type GameState = GameDynamic & {
   enrollment: {
     level_year: number;
     course: string;
+    department: string;
+    faculty: string;
     university: { name: string; short_name: string; primary_color: string; secondary_color: string };
   };
+  /** Every faculty on this campus (each is drawn as its own building). */
+  faculties: string[];
   locations: GameLocation[];
   activities: GameActivity[];
   interactions: GameInteraction[];

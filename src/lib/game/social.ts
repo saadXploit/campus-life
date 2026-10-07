@@ -16,3 +16,76 @@ export const REPORT_REASONS = [
   { value: "cheating", label: "Cheating or exploiting" },
   { value: "other", label: "Something else" },
 ] as const;
+
+// ---------- Friends, chats and dating (shapes returned by the database) ----------
+
+export type SocialFriend = {
+  id: string;
+  name: string;
+  skin: number;
+  hair_style: number;
+  hair_color: number;
+  outfit: number;
+  online: boolean;
+  last_seen: string | null;
+  place: string | null;
+  bond: number;
+  dating_opt_in: boolean;
+  partner: boolean;
+};
+
+export type ConversationSummary = {
+  id: string;
+  kind: "direct" | "group" | "campus";
+  title: string | null;
+  muted: boolean;
+  last: { body: string; sender: string; at: string } | null;
+  unread: number;
+};
+
+export type GiftType = { slug: string; name: string; emoji: string; cost_kobo: number; romantic: boolean };
+
+export type SocialData = {
+  me: { id: string; age: number; dating_opt_in: boolean };
+  friends: SocialFriend[];
+  requests_in: { id: string; name: string; at: string }[];
+  requests_out: { id: string; name: string }[];
+  conversations: ConversationSummary[];
+  partner: { id: string; name: string; since: string } | null;
+  asks_in: { id: string; name: string; at: string }[];
+  asks_out: { id: string; name: string }[];
+  history: { name: string; started_at: string; ended_at: string }[];
+  gift_types: GiftType[];
+  muted: { id: string; name: string }[];
+};
+
+export type ChatMessage = { id: number; sender_id: string; sender: string; body: string; at: string; mine: boolean };
+
+export type ChatView = {
+  conversation: {
+    id: string;
+    kind: "direct" | "group" | "campus";
+    title: string | null;
+    closed: boolean;
+    members: { id: string; name: string; role: string }[] | null;
+  };
+  messages: ChatMessage[];
+};
+
+export type SocialBadges = {
+  unread_chats: number;
+  friend_requests: number;
+  dating_asks: number;
+  friend_ids: string[];
+  pending_ids: string[];
+};
+
+/** "online", "5m ago", "3h ago", "2d ago". */
+export function lastSeenLabel(online: boolean, iso: string | null, nowMs: number): string {
+  if (online) return "online";
+  if (!iso) return "offline";
+  const s = Math.max(0, (nowMs - Date.parse(iso)) / 1000);
+  if (s < 3600) return `${Math.max(1, Math.floor(s / 60))}m ago`;
+  if (s < 86400) return `${Math.floor(s / 3600)}h ago`;
+  return `${Math.floor(s / 86400)}d ago`;
+}

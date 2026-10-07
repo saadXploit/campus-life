@@ -108,3 +108,35 @@ export function academicBusy(slug: string): { kind: "lecture" | "study" | "exam"
   const m = /^(lecture|study|exam):([A-Z]{3}[0-9]{3})$/.exec(slug);
   return m ? { kind: m[1] as "lecture" | "study" | "exam", code: m[2] } : null;
 }
+
+const LECTURER_TITLES = ["Dr.", "Prof.", "Dr.", "Dr.", "Prof."];
+const LECTURER_NAMES = [
+  "Okafor", "Bello", "Adeyemi", "Danjuma", "Eze", "Ibrahim", "Nwosu", "Ogunleye",
+  "Usman", "Okonkwo", "Balogun", "Abubakar", "Etim", "Afolabi", "Chukwu", "Lawal",
+];
+
+function hashCode(text: string): number {
+  let h = 0;
+  for (let i = 0; i < text.length; i++) h = (h * 31 + text.charCodeAt(i)) >>> 0;
+  return h;
+}
+
+/**
+ * The lecturer who teaches a course: a fictional staff character, the same for
+ * everyone, worked out from the course code. Never presented as a real player.
+ */
+export function lecturerFor(code: string): {
+  name: string;
+  avatar: { skin: number; hairStyle: number; hairColor: number; outfit: number };
+} {
+  const h = hashCode(code);
+  return {
+    name: `${LECTURER_TITLES[h % LECTURER_TITLES.length]} ${LECTURER_NAMES[(h >>> 3) % LECTURER_NAMES.length]}`,
+    avatar: {
+      skin: 1 + ((h >>> 7) % 5),
+      hairStyle: [0, 5, 1, 2][(h >>> 10) % 4],
+      hairColor: [0, 1, 5][(h >>> 12) % 3],
+      outfit: [5, 1, 3][(h >>> 14) % 3],
+    },
+  };
+}

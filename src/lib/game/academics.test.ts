@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { academicBusy, nextLectureStart, slotLabel } from "./academics";
+import { academicBusy, lecturerFor, nextLectureStart, slotLabel } from "./academics";
 
 // Thursday 8 Oct 2026, 10:30 AM in Lagos = 09:30 UTC.
 const THU_1030 = Date.UTC(2026, 9, 8, 9, 30);
@@ -27,5 +27,12 @@ describe("timetable", () => {
   it("reads academic busy states", () => {
     expect(academicBusy("lecture:CSC111")).toEqual({ kind: "lecture", code: "CSC111" });
     expect(academicBusy("cafeteria_meal")).toBeNull();
+  });
+});
+
+describe("lecturers", () => {
+  it("always gives the same lecturer for a course", () => {
+    expect(lecturerFor("CSC111")).toEqual(lecturerFor("CSC111"));
+    expect(lecturerFor("CSC111").name).toMatch(/^(Dr\.|Prof\.) [A-Z][a-z]+$/);
   });
 });

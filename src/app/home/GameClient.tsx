@@ -39,6 +39,7 @@ import {
 } from "@/lib/game/interiors";
 import {
   academicBusy,
+  lecturerFor,
   nextLectureStart,
   phaseLabel,
   slotLabel,
@@ -50,6 +51,7 @@ import { travelEnergy } from "@/lib/game/travel";
 import { formatNaira } from "@/lib/money";
 import AcademicsPanel from "./AcademicsPanel";
 import AdCard from "./AdCard";
+import SocialPanel, { type SocialStart } from "./SocialPanel";
 import NotificationsPanel from "./NotificationsPanel";
 import PlayerCard from "./PlayerCard";
 import WalletPanel from "./WalletPanel";
@@ -62,6 +64,8 @@ import {
 } from "./actions";
 import { academicsAction, attendLectureAction, studyAction, writeExamAction } from "./academic-actions";
 import { adViewAction } from "./ad-actions";
+import { badgesAction, friendRequestAction, openDirectAction } from "./chat-actions";
+import type { SocialBadges } from "@/lib/game/social";
 import { blockAction, interactAction, reportAction, sayAction, snapshotAction } from "./social-actions";
 
 function Loading() {
@@ -309,6 +313,10 @@ export default function GameClient({ game }: { game: GameState }) {
   // Academics: loaded on start, every 2 minutes (lecture windows open and close), and after each action.
   const [academics, setAcademics] = useState<Academics | null>(null);
   const [showAcademics, setShowAcademics] = useState(false);
+
+  // Friends, chats and dating: small badge counts polled every 20 seconds.
+  const [badges, setBadges] = useState<SocialBadges | null>(null);
+  const [social, setSocial] = useState<SocialStart | null>(null);
   const lastEventId = useRef(0);
   const handled = useRef(new Set<number>());
   const effectKey = useRef(0);
@@ -360,6 +368,27 @@ export default function GameClient({ game }: { game: GameState }) {
       clearInterval(timer);
     };
   }, []);
+
+  useEffect(() => {
+    let live = true;
+    const load = () => {
+      if (document.visibilityState !== "visible") return;
+      void badgesAction().then((b) => {
+        if (live && b) setBadges(b);
+      });
+    };
+    const first = setTimeout(load, 400);
+    const timer = setInterval(load, 20_000);
+    return () => {
+      live = false;
+      clearTimeout(first);
+      clearInterval(timer);
+    };
+  }, []);
+
+  function refreshBadges() {
+    void badgesAction().then((b) => b && setBadges(b));
+  }
 
   function refreshAcademics() {
     void academicsAction().then((a) => a && setAcademics(a));
@@ -974,6 +1003,8 @@ export default function GameClient({ game }: { game: GameState }) {
             onSelectPerson={setSelected}
             song={song}
             board={board}
+            department={enrollment.department ?? null}
+            lecturer={liveMine ? lecturerFor(liveMine.code) : null}
           />
         ) : webgl ? (
           <CampusWorld
@@ -993,6 +1024,8 @@ export default function GameClient({ game }: { game: GameState }) {
             ads={ads}
             adRotation={adRotation}
             onSelectAd={setOpenAd}
+            faculties={game.faculties ?? []}
+            myFaculty={enrollment.faculty ?? null}
           />
         ) : null}
       </div>
@@ -1021,6 +1054,20 @@ export default function GameClient({ game }: { game: GameState }) {
                 <p className="text-lg font-black tabular-nums">{formatClock(hour)}</p>
                 <p className="text-[11px] text-zinc-300">{lagosDateLabel(now)} · WAT</p>
               </div>
+              <button
+                type="button"
+                onClick={() => setSocial({ tab: "chats" })}
+                aria-label="Chats and friends"
+                className="pointer-events-auto relative rounded-2xl bg-black/45 px-3 py-3 text-lg backdrop-blur"
+              >
+                💬
+                {badges && badges.unread_chats + badges.friend_requests + badges.dating_asks > 0 && (
+                  <span className="absolute -right-1 -top-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-red-500 px-1 text-[11px] font-bold">
+                    {Math.min(9, badges.unread_chats + badges.friend_requests + badges.dating_asks)}
+                    {badges.unread_chats + badges.friend_requests + badges.dating_asks > 9 ? "+" : ""}
+                  </span>
+                )}
+              </button>
               <button
                 type="button"
                 onClick={() => setPanel("notifications")}
@@ -1108,6 +1155,16 @@ export default function GameClient({ game }: { game: GameState }) {
               >
                 📚 Academics
               </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setMenu(false);
+                  setSocial({ tab: "friends" });
+                }}
+                className="block w-full rounded-xl px-3 py-2 text-left hover:bg-white/10"
+              >
+                👥 Friends & dating
+              </button>
               <Link href="/campus" className="block rounded-xl px-3 py-2 hover:bg-white/10">
                 🗺️ Campus map
               </Link>
@@ -1185,6 +1242,11 @@ export default function GameClient({ game }: { game: GameState }) {
                   <div>
                     <p className="text-xs font-semibold tracking-[0.2em] text-emerald-300">INSIDE</p>
                     <p className="text-lg font-extrabold">{insidePlace.name}</p>
+                    {roomKind === "faculty" && enrollment.department && (
+                      <p className="text-xs text-zinc-400">
+                        {enrollment.faculty} · Department of {enrollment.department}
+                      </p>
+                    )}
                   </div>
                   <button
                     type="button"
@@ -1308,6 +1370,36 @@ export default function GameClient({ game }: { game: GameState }) {
           }
           pendingKind={pendingInteraction}
           canReportMessage={selectedPerson.id in lastMessageFrom}
+          friendStatus={
+            badges?.friend_ids.includes(selectedPerson.id)
+              ? "friends"
+              : badges?.pending_ids.includes(selectedPerson.id)
+                ? "pending"
+                : "none"
+          }
+          onAddFriend={() =>
+            startTransition(async () => {
+              const r = await friendRequestAction(selectedPerson.id);
+              if (r.error) setError(r.error);
+              else setToast([r.data === "accepted" ? `🤝 You and ${selectedPerson.name} are friends` : "➕ Friend request sent"]);
+              refreshBadges();
+            })
+          }
+          onMessage={() =>
+            startTransition(async () => {
+              const r = await openDirectAction(selectedPerson.id);
+              if (r.error || !r.data) {
+                setError(r.error ?? "Could not open the chat.");
+                return;
+              }
+              setSelected(null);
+              setSocial({ tab: "chats", conversationId: r.data });
+            })
+          }
+          onGift={() => {
+            setSelected(null);
+            setSocial({ tab: "friends", giftTo: selectedPerson.id });
+          }}
           onInteract={(kind) => interact(selectedPerson, kind)}
           onBlock={() => block(selectedPerson)}
           onReport={(reason, details) => report(selectedPerson, reason, details)}
@@ -1316,6 +1408,19 @@ export default function GameClient({ game }: { game: GameState }) {
       )}
 
       {openAd && <AdCard ad={openAd} onClose={() => setOpenAd(null)} />}
+      {social && (
+        <SocialPanel
+          myId={me}
+          nowMs={now}
+          start={social}
+          onClose={() => {
+            setSocial(null);
+            refreshBadges();
+          }}
+          onChanged={refreshBadges}
+          onDynamic={(d) => apply({ dynamic: d })}
+        />
+      )}
       {showAcademics && (
         <AcademicsPanel academics={academics} nowMs={now} onClose={() => setShowAcademics(false)} />
       )}

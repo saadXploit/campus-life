@@ -17,7 +17,7 @@ import { lightingFor } from "@/lib/game/lighting";
 import { seededRandom } from "@/lib/game/worldLayout";
 import type { WorldAvatar } from "./CampusWorld";
 import { makeLabelTexture } from "./labels";
-import { Bubble, OtherPlayer, type ShownPerson } from "./People";
+import { Bubble, NameTag, OtherPlayer, type ShownPerson } from "./People";
 
 type V3 = [number, number, number];
 
@@ -342,13 +342,51 @@ function LibraryRoom({ primary }: { primary: string }) {
   );
 }
 
-function FacultyRoom({ primary, board }: { primary: string; board: string }) {
+type Lecturer = { name: string; avatar: WorldAvatar };
+
+/** A lecture theatre: projector screen, department banner, podium and (during lectures) the lecturer. */
+function FacultyRoom({
+  primary,
+  board,
+  department,
+  lecturer,
+}: {
+  primary: string;
+  board: string;
+  department: string | null;
+  lecturer: Lecturer | null;
+}) {
   return (
     <>
       <Shell wall="#e5e7eb" floor="#9ca3af" />
-      <B p={[0, 1.8, -3.92]} s={[4.4, 1.6, 0.06]} c="#9ca3af" />
-      <WallText text={board} p={[0, 1.8, -3.87]} w={4.2} bg="#ffffff" fg="#1e293b" />
-      <Table x={-3} z={-2.7} w={1.6} d={0.8} c={primary} />
+      {/* department banner across the top of the back wall */}
+      <WallText
+        text={department ? `Department of ${department}` : "Lecture Theatre"}
+        p={[0, 3.2, -3.93]}
+        w={5.5}
+        bg={primary}
+        fg="#ffffff"
+      />
+      {/* projector screen showing what is on */}
+      <B p={[0, 1.9, -3.92]} s={[4.8, 1.8, 0.06]} c="#1f2937" />
+      <WallText text={board} p={[0, 1.9, -3.87]} w={4.5} bg="#f8fafc" fg="#1e293b" />
+      <B p={[0, 3.55, -2.5]} s={[0.5, 0.18, 0.5]} c="#374151" />
+      {/* podium */}
+      <B p={[3.5, 0.55, -2.9]} s={[0.9, 1.1, 0.7]} c="#5b3a1e" />
+      <B p={[3.5, 1.13, -2.9]} s={[1, 0.06, 0.8]} c="#7c4a2a" />
+      {lecturer && (
+        <group position={[2.3, 0, -2.85]} rotation={[0, -0.25, 0]}>
+          <Avatar3D
+            skin={lecturer.avatar.skin}
+            hairStyle={lecturer.avatar.hairStyle}
+            hairColor={lecturer.avatar.hairColor}
+            outfit={lecturer.avatar.outfit}
+            action="talk"
+          />
+          <NameTag name={`${lecturer.name} · Lecturer`} />
+        </group>
+      )}
+      {/* rows of desks */}
       {[-2.6, -0.6, 1.4].map((x) =>
         [-1.2, 0.2].map((z) => (
           <group key={`${x}${z}`}>
@@ -357,6 +395,7 @@ function FacultyRoom({ primary, board }: { primary: string; board: string }) {
           </group>
         ))
       )}
+      {/* notice board */}
       <B p={[4.94, 1.8, 1.2]} s={[0.04, 1.2, 1.8]} c="#a16207" />
       {[
         [0.7, "#fde047"],
@@ -561,6 +600,8 @@ export default function InteriorScene({
   onSelectPerson,
   song,
   board,
+  department,
+  lecturer,
 }: {
   kind: string;
   avatar: WorldAvatar;
@@ -578,6 +619,10 @@ export default function InteriorScene({
   song: GameAd | null;
   /** What the lecture-room whiteboard says. */
   board?: string | null;
+  /** Your department, on the banner in the lecture theatre. */
+  department?: string | null;
+  /** The lecturer teaching right now (a staff character), or null between lectures. */
+  lecturer?: Lecturer | null;
 }) {
   const light = lightingFor(hour);
   const club = kind === "clubhouse";
@@ -600,7 +645,14 @@ export default function InteriorScene({
       {kind === "hostel" && <HostelRoom sky={light.sky} primary={primary} />}
       {kind === "cafeteria" && <CafeteriaRoom secondary={secondary} />}
       {kind === "library" && <LibraryRoom primary={primary} />}
-      {kind === "faculty" && <FacultyRoom primary={primary} board={board ?? "Welcome to the Faculty"} />}
+      {kind === "faculty" && (
+        <FacultyRoom
+          primary={primary}
+          board={board ?? "Welcome to the Faculty"}
+          department={department ?? null}
+          lecturer={lecturer ?? null}
+        />
+      )}
       {kind === "clubhouse" && <ClubRoom song={song} />}
       {kind === "health" && <HealthRoom />}
 

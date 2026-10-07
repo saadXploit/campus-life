@@ -37,6 +37,8 @@ type Props = {
   ads: GameAd[];
   adRotation: number;
   onSelectAd: (ad: GameAd) => void;
+  faculties: string[];
+  myFaculty: string | null;
 };
 
 const WALK_SPEED = 7;
@@ -298,11 +300,13 @@ export default function CampusWorld({
   ads,
   adRotation,
   onSelectAd,
+  faculties,
+  myFaculty,
 }: Props) {
   const targetRef = useRef<{ x: number; z: number } | null>(null);
   const [activeZone, setActiveZone] = useState<string | null>(null);
 
-  const layout = useCampusLayout(locations);
+  const layout = useCampusLayout(locations, faculties);
   const { placed, obstacles } = layout;
 
   const zones = useMemo(
@@ -364,6 +368,7 @@ export default function CampusWorld({
         onGround={(x, z) => (targetRef.current = { x, z })}
         onSelectBuilding={walkToBuilding}
         onSelectAd={onSelectAd}
+        myFaculty={myFaculty}
       />
       {placed.map((p) => (
         <Zone key={p.id} x={p.entrance.x} z={p.entrance.z} active={activeZone === p.kind} />
