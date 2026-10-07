@@ -74,10 +74,9 @@ export default async function ResultPage() {
             when term begins.
           </p>
 
-          <Link href="/welcome" className={`${primaryButton} mt-6`}>
+                   <Link href="/home" className={`${primaryButton} mt-6`}>
             Begin first semester
-          </Link>
-        </div>
+          </Link>        </div>
       </main>
     );
   }
