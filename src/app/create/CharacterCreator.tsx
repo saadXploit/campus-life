@@ -1,8 +1,8 @@
 "use client";
 
+import dynamic from "next/dynamic";
 import { useActionState, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import Avatar from "@/components/Avatar";
 import {
   GENDERS,
   HAIR_COLORS,
@@ -24,6 +24,8 @@ export type BackgroundOption = {
   hustle_bonus: number;
   social_bonus: number;
 };
+
+const AvatarPreview = dynamic(() => import("@/components/scene/AvatarPreview"), { ssr: false });
 
 const STEPS = ["You", "Look", "Story", "Passion", "Review"];
 
@@ -94,13 +96,9 @@ export default function CharacterCreator({ backgrounds }: { backgrounds: Backgro
   }
 
   const preview = (
-    <Avatar
-      skin={skin}
-      hairStyle={hairStyle}
-      hairColor={hairColor}
-      outfit={outfit}
-      className="mx-auto h-44 w-44 rounded-3xl bg-gradient-to-b from-white/10 to-white/0"
-    />
+    <div className="mx-auto h-64 w-52 overflow-hidden rounded-3xl bg-gradient-to-b from-white/10 to-white/0">
+      <AvatarPreview skin={skin} hairStyle={hairStyle} hairColor={hairColor} outfit={outfit} />
+    </div>
   );
 
   return (

@@ -14,7 +14,7 @@ export async function createCharacterAction(
 ): Promise<State> {
   const user = await requireUser();
 
-  if (!(await allowRequest("create-character", 20, 600))) {
+  if (!(await allowRequest("create-character", 20, 600, { userId: user.id }))) {
     return { error: "Too many attempts. Please wait a few minutes and try again." };
   }
 
@@ -54,6 +54,11 @@ export async function createCharacterAction(
       return { error: "That name is already taken. Try another one." };
     }
     if (error.message.includes("players_user_id")) redirect("/welcome");
+    if (error.message.includes("registration closed")) {
+      return {
+        error: "New student registration is paused for a short while. Please try again later.",
+      };
+    }
     if (error.message.includes("unknown background")) {
       return { error: "Please pick a background." };
     }

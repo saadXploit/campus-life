@@ -1,7 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import Avatar from "@/components/Avatar";
-import UniversityCrest from "@/components/UniversityCrest";
+import AvatarPreviewLazy from "@/components/scene/AvatarPreviewLazy";
 import { requireUser } from "@/lib/auth/guards";
 import { getMyEnrollment } from "@/lib/game/enrollment";
 import { INTERESTS } from "@/lib/game/options";
@@ -22,6 +21,9 @@ export default async function WelcomePage() {
     getMyEnrollment(),
   ]);
 
+  // Enrolled students go straight to their campus.
+  if (enrollment) redirect("/home");
+
   const interest = INTERESTS.find((i) => i.value === player.interest);
 
   return (
@@ -29,13 +31,14 @@ export default async function WelcomePage() {
       <div className="w-full max-w-sm text-center">
         <p className="text-sm font-semibold tracking-[0.3em] text-amber-400">CAMPUS LIFE</p>
 
-        <Avatar
-          skin={player.avatar_skin}
-          hairStyle={player.avatar_hair_style}
-          hairColor={player.avatar_hair_color}
-          outfit={player.avatar_outfit}
-          className="mx-auto mt-6 h-40 w-40 rounded-3xl bg-gradient-to-b from-white/10 to-white/0"
-        />
+        <div className="mx-auto mt-6 h-64 w-52 overflow-hidden rounded-3xl bg-gradient-to-b from-white/10 to-white/0">
+          <AvatarPreviewLazy
+            skin={player.avatar_skin}
+            hairStyle={player.avatar_hair_style}
+            hairColor={player.avatar_hair_color}
+            outfit={player.avatar_outfit}
+          />
+        </div>
 
         <h1 className="mt-4 text-3xl font-extrabold">{player.display_name}</h1>
         <p className="mt-1 text-sm text-zinc-400">
@@ -57,41 +60,18 @@ export default async function WelcomePage() {
           </div>
         </div>
 
-        {enrollment ? (
-          <div
-            className="mt-4 flex items-center gap-4 rounded-2xl border border-white/10 p-4 text-left"
-            style={{
-              background: `linear-gradient(135deg, ${enrollment.universities.primary_color}, #0b1020)`,
-            }}
-          >
-            <UniversityCrest
-              shortName={enrollment.universities.short_name}
-              primary={enrollment.universities.primary_color}
-              secondary={enrollment.universities.secondary_color}
-              className="h-14 w-12 shrink-0"
-            />
-            <div>
-              <p className="text-xs text-zinc-300">{enrollment.level_year}00 Level student</p>
-              <p className="font-bold leading-tight">{enrollment.courses.name}</p>
-              <p className="text-xs text-zinc-300">{enrollment.universities.name}</p>
-            </div>
-          </div>
-        ) : (
-          <>
-            <Link
-              href="/universities"
-              className="mt-6 block rounded-2xl bg-gradient-to-r from-amber-400 to-orange-500 py-4 text-base font-extrabold text-black active:scale-95"
-            >
-              Explore universities
-            </Link>
-            <Link
-              href="/apply"
-              className="mt-3 block rounded-2xl border border-amber-400/60 py-4 text-base font-extrabold text-amber-300 active:scale-95"
-            >
-              Apply for admission
-            </Link>
-          </>
-        )}
+        <Link
+          href="/universities"
+          className="mt-6 block rounded-2xl bg-gradient-to-r from-amber-400 to-orange-500 py-4 text-base font-extrabold text-black active:scale-95"
+        >
+          Explore universities
+        </Link>
+        <Link
+          href="/apply"
+          className="mt-3 block rounded-2xl border border-amber-400/60 py-4 text-base font-extrabold text-amber-300 active:scale-95"
+        >
+          Apply for admission
+        </Link>
 
         <form action="/auth/signout" method="post" className="mt-6">
           <button
