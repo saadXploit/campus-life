@@ -3,8 +3,8 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { AnimatePresence, motion } from "framer-motion";
-import { travelCost, travelHours } from "@/lib/game/travel";
-import { travelAction } from "./actions";
+import { travelEnergy } from "@/lib/game/travel";
+import { travelAction } from "../home/actions";
 
 export type MapLocation = {
   id: string;
@@ -30,14 +30,12 @@ const ICONS: Record<string, string> = {
 export default function CampusMap({
   locations,
   currentKind,
-  hoursLeft,
   energy,
   primary,
   secondary,
 }: {
   locations: MapLocation[];
   currentKind: string | null;
-  hoursLeft: number;
   energy: number;
   primary: string;
   secondary: string;
@@ -51,9 +49,7 @@ export default function CampusMap({
   const selected = locations.find((l) => l.id === selectedId) ?? null;
   const hub = locations.find((l) => l.kind === "faculty") ?? null;
 
-  const hours = current && selected ? travelHours(current, selected) : 0;
-  const cost = travelCost(hours);
-  const enoughTime = hoursLeft >= hours;
+  const cost = current && selected ? travelEnergy(current, selected) : 0;
   const enoughEnergy = energy >= cost;
 
   function go() {
@@ -65,8 +61,8 @@ export default function CampusMap({
         setError(result.error);
         return;
       }
-      setSelectedId(null);
-      router.refresh();
+      // Arrive there in the 3D campus.
+      router.push("/home");
     });
   }
 
@@ -179,27 +175,16 @@ export default function CampusMap({
 
               {selected.id === current?.id ? (
                 <p className="mt-4 rounded-xl bg-emerald-400/10 p-3 text-center text-sm text-emerald-300">
-                  You are here. See what you can do on your home screen.
+                  You are here.
                 </p>
               ) : (
                 <>
-                  <div className="mt-4 grid grid-cols-2 gap-3 text-center text-sm">
-                    <div className="rounded-xl bg-white/5 p-3">
-                      <p className="text-xs text-zinc-500">Travel time</p>
-                      <p className="font-bold">{hours} hours</p>
-                    </div>
-                    <div className="rounded-xl bg-white/5 p-3">
-                      <p className="text-xs text-zinc-500">Energy</p>
-                      <p className="font-bold">-{cost}</p>
-                    </div>
+                  <div className="mt-4 rounded-xl bg-white/5 p-3 text-center text-sm">
+                    <p className="text-xs text-zinc-500">Energy to walk there</p>
+                    <p className="font-bold">-{cost}</p>
                   </div>
 
-                  {!enoughTime && (
-                    <p className="mt-3 text-center text-sm text-amber-300">
-                      Not enough hours left today.
-                    </p>
-                  )}
-                  {enoughTime && !enoughEnergy && (
+                  {!enoughEnergy && (
                     <p className="mt-3 text-center text-sm text-amber-300">
                       Too tired to walk that far.
                     </p>
@@ -209,7 +194,7 @@ export default function CampusMap({
                   <button
                     type="button"
                     onClick={go}
-                    disabled={pending || !enoughTime || !enoughEnergy}
+                    disabled={pending || !enoughEnergy}
                     className="mt-4 w-full rounded-2xl bg-gradient-to-r from-amber-400 to-orange-500 py-4 text-base font-extrabold text-black disabled:opacity-40 active:scale-95"
                   >
                     {pending ? "Walking..." : "Go there"}

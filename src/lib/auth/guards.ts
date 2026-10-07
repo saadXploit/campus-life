@@ -34,6 +34,19 @@ export async function requireUser(): Promise<User> {
 }
 
 /**
+ * FAST path for the game: the signed-in user's id, with the login token's signature
+ * checked locally (no call to the auth server). Use it only where every database call
+ * that follows also refuses suspended or banned accounts, as the game functions do.
+ */
+export async function requirePlayerId(): Promise<string> {
+  const supabase = await createClient();
+  const { data, error } = await supabase.auth.getClaims();
+  const id = data?.claims?.sub;
+  if (error || typeof id !== "string") redirect("/login");
+  return id;
+}
+
+/**
  * The staff role stored in OUR database for this user.
  * Returns null for normal players and for suspended staff.
  */

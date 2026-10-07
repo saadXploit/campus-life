@@ -1,31 +1,35 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { requireUser } from "@/lib/auth/guards";
-import { getMyEnrollment } from "@/lib/game/enrollment";
-import { getMyPlayer } from "@/lib/game/player";
-import { ensureToday, getMyState } from "@/lib/game/state";
-import { createClient } from "@/lib/supabase/server";
-import CampusMap, { type MapLocation } from "./CampusMap";
+import RefreshButton from "@/components/RefreshButton";
+import { requirePlayerId } from "@/lib/auth/guards";
+import { getGameState } from "@/lib/game/gameState";
+import CampusMap from "./CampusMap";
 
 export default async function CampusPage() {
-  const user = await requireUser();
+  // Fast local login check, then ONE database call.
+  const userId = await requirePlayerId();
+  const game = await getGameState(userId);
 
-  if (!(await getMyPlayer())) redirect("/create");
-  const enrollment = await getMyEnrollment();
-  if (!enrollment) redirect("/welcome");
+  if (!game) {
+    return (
+      <main className="flex min-h-screen flex-col items-center justify-center gap-4 bg-[#0b1020] p-6 text-center text-white">
+        <p className="font-bold">The campus map could not load right now.</p>
+        <RefreshButton>Try again</RefreshButton>
+      </main>
+    );
+  }
 
-  await ensureToday(user.id);
+  if (game.status !== "ok") {
+    redirect(
+      game.status === "no_player"
+        ? "/create"
+        : game.status === "not_enrolled"
+          ? "/welcome"
+          : "/login?error=suspended"
+    );
+  }
 
-  const supabase = await createClient();
-  const [state, locationsResult] = await Promise.all([
-    getMyState(),
-    supabase
-      .from("locations")
-      .select("id, name, kind, description, map_x, map_y, has_billboard")
-      .eq("university_id", enrollment.university_id)
-      .order("name"),
-  ]);
-  if (!state) redirect("/welcome");
+  const university = game.enrollment.university;
 
   return (
     <main className="min-h-screen bg-[#0b1020] px-4 pb-40 pt-6 text-white">
@@ -34,25 +38,19 @@ export default async function CampusPage() {
           Back
         </Link>
         <p className="mt-5 text-xs font-semibold tracking-[0.3em] text-amber-400">CAMPUS MAP</p>
-        <h1 className="mt-1 text-2xl font-extrabold leading-tight">
-          {enrollment.universities.name}
-        </h1>
+        <h1 className="mt-1 text-2xl font-extrabold leading-tight">{university.name}</h1>
 
         <div className="mt-3 flex gap-3 text-sm">
-          <span className="rounded-full bg-white/10 px-3 py-1">
-            ⏱ {state.hours_left} hours left
-          </span>
-          <span className="rounded-full bg-white/10 px-3 py-1">⚡ {state.energy}% energy</span>
+          <span className="rounded-full bg-white/10 px-3 py-1">⚡ {game.state.energy}% energy</span>
         </div>
 
         <div className="mt-5">
           <CampusMap
-            locations={(locationsResult.data ?? []) as MapLocation[]}
-            currentKind={state.locations?.kind ?? null}
-            hoursLeft={state.hours_left}
-            energy={state.energy}
-            primary={enrollment.universities.primary_color}
-            secondary={enrollment.universities.secondary_color}
+            locations={game.locations}
+            currentKind={game.state.location_kind}
+            energy={game.state.energy}
+            primary={university.primary_color}
+            secondary={university.secondary_color}
           />
         </div>
       </div>

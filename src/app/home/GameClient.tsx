@@ -2,22 +2,24 @@
 
 import dynamic from "next/dynamic";
 import Link from "next/link";
-import { useEffect, useState, useTransition } from "react";
-import { useRouter } from "next/navigation";
+import { useEffect, useMemo, useRef, useState, useTransition, type RefObject } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import Countdown from "@/components/Countdown";
-import RefreshButton from "@/components/RefreshButton";
 import UniversityCrest from "@/components/UniversityCrest";
 import type { AvatarAction } from "@/components/scene/Avatar3D";
-import type { WorldAvatar, WorldLocation } from "@/components/world/CampusWorld";
+import type { GameActivity, GameDynamic, GameState } from "@/lib/game/gameTypes";
 import { BED_SPOT, ENTRY_SPOT, hasInterior, spotFor, type Spot } from "@/lib/game/interiors";
-import { formatClock } from "@/lib/game/time";
-import { travelCost, travelHours } from "@/lib/game/travel";
+import { formatClock, formatDuration, lagosDateLabel, lagosHour } from "@/lib/game/time";
+import { travelEnergy } from "@/lib/game/travel";
 import { formatNaira } from "@/lib/money";
-import { travelAction } from "../campus/actions";
 import NotificationsPanel from "./NotificationsPanel";
 import WalletPanel from "./WalletPanel";
-import { performActivityAction, wakeUpAction } from "./actions";
+import {
+  performActivityAction,
+  refreshGameAction,
+  travelAction,
+  wakeUpAction,
+  type ActionResult,
+} from "./actions";
 
 function Loading() {
   return (
@@ -37,44 +39,8 @@ const InteriorScene = dynamic(() => import("@/components/world/InteriorScene"), 
   loading: Loading,
 });
 
-export type GameActivity = {
-  slug: string;
-  name: string;
-  description: string;
-  location_kind: string;
-  duration_hours: number;
-  energy_delta: number;
-  health_delta: number;
-  happiness_delta: number;
-  cost_kobo: number;
-  ends_day: boolean;
-};
-
-export type GameLocation = WorldLocation & { description: string };
-
-type Props = {
-  playerName: string;
-  avatar: WorldAvatar;
-  university: { name: string; short_name: string; primary_color: string; secondary_color: string };
-  levelYear: number;
-  courseName: string;
-  locations: GameLocation[];
-  activities: GameActivity[];
-  state: {
-    energy: number;
-    health: number;
-    happiness: number;
-    hours_left: number;
-    slept_today: boolean;
-    locationKind: string | null;
-  };
-  world: { dayNumber: number; weekday: string; nextDayAt: string };
-  hour: number;
-  balance: number;
-  unreadCount: number;
-  /** False when the player is already a full day ahead of the campus calendar. */
-  canWake: boolean;
-};
+/** Shown only as a guide while asleep. The server decides the real amount on waking. */
+const SLEEP_ENERGY_PER_HOUR = 17;
 
 /** Which body animation an activity plays. */
 function animationFor(a: GameActivity): AvatarAction {
@@ -82,6 +48,11 @@ function animationFor(a: GameActivity): AvatarAction {
   if (a.location_kind === "sports") return "exercise";
   if (a.slug.includes("hang") || a.location_kind === "clubhouse") return "dance";
   return "busy";
+}
+
+/** Server time minus this device's time (only called from event handlers and effects). */
+function clockSkew(serverTime: string): number {
+  return Date.parse(serverTime) - Date.now();
 }
 
 function signed(n: number): string {
@@ -117,33 +88,153 @@ function detectWebGL(): boolean {
   }
 }
 
-export default function GameClient(props: Props) {
-  const { state, world, locations, activities, university } = props;
-  const router = useRouter();
+/** Progress of the current activity, counting down in real time. */
+function BusyBar({
+  label,
+  untilMs,
+  totalMs,
+  skewRef,
+  onDone,
+}: {
+  label: string;
+  untilMs: number;
+  totalMs: number;
+  skewRef: RefObject<number>;
+  onDone: () => void;
+}) {
+  const [left, setLeft] = useState(totalMs);
+  useEffect(() => {
+    const tick = () => {
+      const l = untilMs - (Date.now() + skewRef.current);
+      setLeft(Math.max(0, l));
+      if (l <= 0) onDone();
+    };
+    const first = setTimeout(tick, 0);
+    const timer = setInterval(tick, 500);
+    return () => {
+      clearTimeout(first);
+      clearInterval(timer);
+    };
+  }, [untilMs, skewRef, onDone]);
+
+  const done = totalMs > 0 ? 1 - left / totalMs : 0;
+  return (
+    <div className="w-60 rounded-2xl bg-black/60 p-3 text-center backdrop-blur">
+      <p className="text-sm font-bold">{label}...</p>
+      <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-white/15">
+        <div className="h-full bg-amber-400 transition-[width] duration-500" style={{ width: `${done * 100}%` }} />
+      </div>
+      <p className="mt-1 text-xs text-zinc-300">{formatDuration(left)} left</p>
+    </div>
+  );
+}
+
+/** Asleep: time passes for real and energy comes back. */
+function SleepOverlay({
+  asleepSince,
+  energy,
+  skewRef,
+  waking,
+  error,
+  onWake,
+}: {
+  asleepSince: string;
+  energy: number;
+  skewRef: RefObject<number>;
+  waking: boolean;
+  error: string | null;
+  onWake: () => void;
+}) {
+  const [elapsed, setElapsed] = useState(0);
+  useEffect(() => {
+    const tick = () => setElapsed(Math.max(0, Date.now() + skewRef.current - Date.parse(asleepSince)));
+    const first = setTimeout(tick, 0);
+    const timer = setInterval(tick, 5000);
+    return () => {
+      clearTimeout(first);
+      clearInterval(timer);
+    };
+  }, [asleepSince, skewRef]);
+
+  const projected = Math.min(100, energy + Math.floor((elapsed / 3_600_000) * SLEEP_ENERGY_PER_HOUR));
+
+  return (
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      transition={{ duration: 1.2 }}
+      className="pointer-events-none absolute inset-x-0 bottom-0 flex justify-center bg-gradient-to-t from-[#050816]/90 to-transparent pb-10 pt-24"
+    >
+      <div className="pointer-events-auto text-center">
+        <p className="text-5xl">😴</p>
+        <p className="mt-2 text-xl font-extrabold">Sleeping</p>
+        <p className="mt-1 text-sm text-zinc-300">Asleep for {formatDuration(elapsed)}</p>
+        <p className="mt-1 text-sm text-amber-300">
+          ⚡ {energy} → about {projected} if you wake now
+        </p>
+        <p className="mt-1 text-xs text-zinc-500">Energy comes back with real time asleep (full in about 6 hours).</p>
+        <button
+          type="button"
+          onClick={onWake}
+          disabled={waking}
+          className="mt-4 rounded-2xl bg-gradient-to-r from-amber-400 to-orange-500 px-8 py-3 font-extrabold text-black disabled:opacity-50 active:scale-95"
+        >
+          {waking ? "Waking up..." : "Wake up"}
+        </button>
+        {error && <p className="mt-3 text-sm text-red-300">{error}</p>}
+      </div>
+    </motion.div>
+  );
+}
+
+export default function GameClient({ game }: { game: GameState }) {
+  const { locations, activities, enrollment } = game;
+  const university = enrollment.university;
   const [, startTransition] = useTransition();
+
+  const [dyn, setDyn] = useState<GameDynamic>(game);
+  // Server time minus this device's time, so countdowns are right even if the phone clock is off.
+  const skewRef = useRef(0);
+  const [now, setNow] = useState(() => Date.parse(game.server_time));
+
   const [webgl, setWebgl] = useState<boolean | null>(null);
   const [zone, setZone] = useState<string | null>(null);
   // The building the player is inside (its room is shown), or null when outdoors.
   const [inside, setInside] = useState<string | null>(
-    state.slept_today && hasInterior(state.locationKind) ? state.locationKind : null
+    game.state.asleep_since && hasInterior(game.state.location_kind) ? game.state.location_kind : null
   );
-  const [busy, setBusy] = useState<{
-    label: string;
-    action: AvatarAction;
-    spot: Spot | null;
-    day: number;
-  } | null>(null);
+  const [pending, setPending] = useState<string | null>(null);
   const [entering, setEntering] = useState(false);
+  const [waking, setWaking] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [toast, setToast] = useState<string[] | null>(null);
   const [menu, setMenu] = useState(false);
   const [panel, setPanel] = useState<"wallet" | "notifications" | null>(null);
-  const [waking, setWaking] = useState(false);
+
+  const avatar = useMemo(
+    () => ({
+      skin: game.player.skin,
+      hairStyle: game.player.hair_style,
+      hairColor: game.player.hair_color,
+      outfit: game.player.outfit,
+    }),
+    [game.player]
+  );
 
   useEffect(() => {
-    const t = setTimeout(() => setWebgl(detectWebGL()), 0);
-    return () => clearTimeout(t);
-  }, []);
+    const first = setTimeout(() => {
+      skewRef.current = clockSkew(game.server_time);
+      setWebgl(detectWebGL());
+      setNow(Date.now() + skewRef.current);
+    }, 0);
+    // The campus clock and the light move with real time.
+    const timer = setInterval(() => setNow(Date.now() + skewRef.current), 30_000);
+    return () => {
+      clearTimeout(first);
+      clearInterval(timer);
+    };
+  }, [game.server_time]);
 
   useEffect(() => {
     if (!toast) return;
@@ -151,27 +242,47 @@ export default function GameClient(props: Props) {
     return () => clearTimeout(t);
   }, [toast]);
 
-  const here = locations.find((l) => l.kind === state.locationKind) ?? null;
+  function apply(result: ActionResult): boolean {
+    if (result.error || !result.dynamic) {
+      setError(result.error ?? "Something went wrong. Please try again.");
+      return false;
+    }
+    const d = result.dynamic;
+    skewRef.current = clockSkew(d.server_time);
+    setDyn(d);
+    setNow(Date.parse(d.server_time));
+    return true;
+  }
+
+  const s = dyn.state;
+  const asleep = s.asleep_since !== null;
+  const busyUntil = s.busy_until ? Date.parse(s.busy_until) : 0;
+  const busySlug = busyUntil > now ? s.busy_activity : null;
+  const currentSlug = pending ?? busySlug;
+  const current = activities.find((a) => a.slug === currentSlug) ?? null;
+  const occupied = current !== null;
+
+  const here = locations.find((l) => l.kind === s.location_kind) ?? null;
   const zonePlace = locations.find((l) => l.kind === zone) ?? null;
-  const atCheckedInPlace = zonePlace !== null && zonePlace.kind === state.locationKind;
-  const hereActivities = activities.filter((a) => a.location_kind === state.locationKind);
-  // Show a room only while the server agrees the player is there (a new day sends them home).
-  const roomKind = inside !== null && inside === state.locationKind ? inside : null;
+  const atCheckedInPlace = zonePlace !== null && zonePlace.kind === s.location_kind;
+  const hereActivities = activities.filter((a) => a.location_kind === s.location_kind);
+  // Show a room only while the server agrees the player is there.
+  const roomKind = inside !== null && inside === s.location_kind ? inside : null;
   const insidePlace = locations.find((l) => l.kind === roomKind) ?? null;
+  const tripEnergy = here && zonePlace ? travelEnergy(here, zonePlace) : 0;
 
-  const tripHours = here && zonePlace ? travelHours(here, zonePlace) : 0;
-  const tripEnergy = travelCost(tripHours);
-
-  const asleep = state.slept_today;
-  // A sleep started yesterday is over once the new day begins.
-  const activeBusy = busy && busy.day === world.dayNumber ? busy : null;
-  const avatarAction: AvatarAction | null = asleep ? "sleep" : (activeBusy?.action ?? null);
-  const roomSpot: Spot = asleep ? BED_SPOT : (activeBusy?.spot ?? ENTRY_SPOT);
+  const avatarAction: AvatarAction | null = asleep ? "sleep" : current ? animationFor(current) : null;
+  const roomSpot: Spot = asleep
+    ? BED_SPOT
+    : current
+      ? spotFor(current.slug, animationFor(current))
+      : ENTRY_SPOT;
+  const hour = lagosHour(now);
 
   function enter() {
     if (!zonePlace) return;
     const kind = zonePlace.kind;
-    // Already checked in here: just walk inside, no travel cost.
+    // Already checked in here: just walk inside, no cost.
     if (atCheckedInPlace) {
       if (hasInterior(kind)) setInside(kind);
       return;
@@ -179,66 +290,49 @@ export default function GameClient(props: Props) {
     setError(null);
     setEntering(true);
     startTransition(async () => {
-      const result = await travelAction(zonePlace.id);
+      const ok = apply(await travelAction(zonePlace.id));
       setEntering(false);
-      if (result.error) {
-        setError(result.error);
-        return;
-      }
-      if (hasInterior(kind)) setInside(kind);
-      router.refresh();
+      if (ok && hasInterior(kind)) setInside(kind);
     });
   }
 
   function doActivity(a: GameActivity) {
     setError(null);
-    const spot = inside ? spotFor(a.slug, animationFor(a)) : null;
-    setBusy({ label: a.name, action: spot?.pose ?? animationFor(a), spot, day: world.dayNumber });
+    setPending(a.slug);
     startTransition(async () => {
-      const started = Date.now();
-      const result = await performActivityAction(a.slug);
-      // Let the character walk over and act it out so the action is visible.
-      const wait = Math.max(0, (spot ? 3400 : 2200) - (Date.now() - started));
-      await new Promise((r) => setTimeout(r, wait));
-      if (result.error) {
-        setBusy(null);
-        setError(result.error);
-        return;
-      }
-      // After going to bed, stay in bed: the sleep screen takes over.
-      if (!a.ends_day) setBusy(null);
+      const ok = apply(await performActivityAction(a.slug));
+      setPending(null);
+      if (!ok || a.ends_day) return;
       const parts: string[] = [];
       if (a.energy_delta) parts.push(`⚡ ${signed(a.energy_delta)}`);
       if (a.health_delta) parts.push(`❤️ ${signed(a.health_delta)}`);
       if (a.happiness_delta) parts.push(`😊 ${signed(a.happiness_delta)}`);
       if (a.cost_kobo) parts.push(`-${formatNaira(a.cost_kobo)}`);
       setToast(parts);
-      router.refresh();
     });
   }
 
   function wake() {
     setError(null);
     setWaking(true);
+    const before = s.energy;
     startTransition(async () => {
       const result = await wakeUpAction();
       setWaking(false);
-      if (result.error) {
-        setError(result.error);
-        return;
+      if (apply(result) && result.dynamic) {
+        const gained = result.dynamic.state.energy - before;
+        setToast([gained > 0 ? `Good morning! ⚡ +${gained}` : "Good morning!"]);
       }
-      setBusy(null);
-      router.refresh();
     });
   }
 
   function canDo(a: GameActivity): string | null {
-    if (!a.ends_day && state.hours_left < a.duration_hours) return "Not enough time";
-    if (a.energy_delta < 0 && state.energy < -a.energy_delta) return "Too tired";
-    if (props.balance < a.cost_kobo) return "Can't afford";
+    const ready = dyn.cooldowns[a.slug] ? Date.parse(dyn.cooldowns[a.slug]) : 0;
+    if (ready > now) return `Ready in ${formatDuration(ready - now)}`;
+    if (!a.ends_day && a.energy_delta < 0 && s.energy < -a.energy_delta) return "Too tired";
+    if (dyn.balance_kobo < a.cost_kobo) return "Can't afford";
     return null;
   }
-
 
   const activityList =
     hereActivities.length === 0 ? (
@@ -252,7 +346,7 @@ export default function GameClient(props: Props) {
               key={a.slug}
               type="button"
               onClick={() => doActivity(a)}
-              disabled={activeBusy !== null || blocked !== null}
+              disabled={occupied || blocked !== null}
               className="w-44 shrink-0 rounded-2xl border border-white/10 bg-white/5 p-3 text-left transition hover:bg-white/10 disabled:opacity-40 active:scale-95 sm:w-auto"
             >
               <div className="flex items-start justify-between gap-2">
@@ -262,10 +356,12 @@ export default function GameClient(props: Props) {
                 )}
               </div>
               <p className="mt-1 flex flex-wrap gap-x-2 text-[11px] text-zinc-300">
-                <span>⏱ {a.ends_day ? "ends day" : `${a.duration_hours}h`}</span>
-                {a.energy_delta !== 0 && <span>⚡{signed(a.energy_delta)}</span>}
-                {a.health_delta !== 0 && <span>❤️{signed(a.health_delta)}</span>}
-                {a.happiness_delta !== 0 && <span>😊{signed(a.happiness_delta)}</span>}
+                <span>
+                  ⏱ {a.ends_day ? "until you wake" : formatDuration(Number(a.duration_minutes) * 60_000)}
+                </span>
+                {!a.ends_day && a.energy_delta !== 0 && <span>⚡{signed(a.energy_delta)}</span>}
+                {a.health_delta !== 0 && !a.ends_day && <span>❤️{signed(a.health_delta)}</span>}
+                {a.happiness_delta !== 0 && !a.ends_day && <span>😊{signed(a.happiness_delta)}</span>}
               </p>
               {blocked && <p className="mt-1 text-[11px] text-amber-300">{blocked}</p>}
             </button>
@@ -288,9 +384,9 @@ export default function GameClient(props: Props) {
         ) : webgl && roomKind ? (
           <InteriorScene
             kind={roomKind}
-            avatar={props.avatar}
+            avatar={avatar}
             spot={roomSpot}
-            hour={props.hour}
+            hour={hour}
             primary={university.primary_color}
             secondary={university.secondary_color}
           />
@@ -299,11 +395,11 @@ export default function GameClient(props: Props) {
             locations={locations}
             primary={university.primary_color}
             secondary={university.secondary_color}
-            hour={props.hour}
-            avatar={props.avatar}
-            playerName={props.playerName}
-            spawnKind={state.locationKind}
-            spawnKey={String(world.dayNumber)}
+            hour={hour}
+            avatar={avatar}
+            playerName={game.player.name}
+            spawnKind={s.location_kind}
+            spawnKey="campus"
             action={avatarAction}
             onZoneChange={setZone}
           />
@@ -321,9 +417,9 @@ export default function GameClient(props: Props) {
               className="h-10 w-9 shrink-0"
             />
             <div className="leading-tight">
-              <p className="text-sm font-extrabold">{props.playerName}</p>
+              <p className="text-sm font-extrabold">{game.player.name}</p>
               <p className="text-[11px] text-zinc-300">
-                {props.levelYear}00L · {props.courseName}
+                {enrollment.level_year}00L · {enrollment.course}
               </p>
             </div>
           </div>
@@ -331,21 +427,19 @@ export default function GameClient(props: Props) {
           <div className="flex flex-col items-end gap-2">
             <div className="flex items-center gap-2">
               <div className="rounded-2xl bg-black/45 px-3 py-2 text-right leading-tight backdrop-blur">
-                <p className="text-lg font-black tabular-nums">{formatClock(props.hour)}</p>
-                <p className="text-[11px] text-zinc-300">
-                  {world.weekday} · Day {world.dayNumber}
-                </p>
+                <p className="text-lg font-black tabular-nums">{formatClock(hour)}</p>
+                <p className="text-[11px] text-zinc-300">{lagosDateLabel(now)} · WAT</p>
               </div>
               <button
                 type="button"
                 onClick={() => setPanel("notifications")}
-                aria-label={props.unreadCount ? `${props.unreadCount} new notifications` : "Notifications"}
+                aria-label={dyn.unread ? `${dyn.unread} new notifications` : "Notifications"}
                 className="pointer-events-auto relative rounded-2xl bg-black/45 px-3 py-3 text-lg backdrop-blur"
               >
                 🔔
-                {props.unreadCount > 0 && (
+                {dyn.unread > 0 && (
                   <span className="absolute -right-1 -top-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-red-500 px-1 text-[11px] font-bold">
-                    {props.unreadCount > 9 ? "9+" : props.unreadCount}
+                    {dyn.unread > 9 ? "9+" : dyn.unread}
                   </span>
                 )}
               </button>
@@ -363,16 +457,15 @@ export default function GameClient(props: Props) {
               onClick={() => setPanel("wallet")}
               className="pointer-events-auto rounded-full bg-black/45 px-3 py-1.5 text-sm font-extrabold text-emerald-300 backdrop-blur"
             >
-              {formatNaira(props.balance)} ›
+              {formatNaira(dyn.balance_kobo)} ›
             </button>
           </div>
         </div>
 
         <div className="mt-2 inline-flex flex-col gap-1 rounded-2xl bg-black/45 px-3 py-2 backdrop-blur">
-          <MiniMeter icon="⚡" value={state.energy} color="#fbbf24" />
-          <MiniMeter icon="❤️" value={state.health} color="#f87171" />
-          <MiniMeter icon="😊" value={state.happiness} color="#e879f9" />
-          <p className="text-[11px] text-amber-300">⏱ {state.hours_left}h left today</p>
+          <MiniMeter icon="⚡" value={s.energy} color="#fbbf24" />
+          <MiniMeter icon="❤️" value={s.health} color="#f87171" />
+          <MiniMeter icon="😊" value={s.happiness} color="#e879f9" />
         </div>
 
         <AnimatePresence>
@@ -424,67 +517,35 @@ export default function GameClient(props: Props) {
         )}
       </AnimatePresence>
 
-      {/* activity in progress */}
-      <AnimatePresence>
-        {activeBusy && !asleep && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="pointer-events-none absolute inset-x-0 top-1/4 flex justify-center"
-          >
-            <div className="w-56 rounded-2xl bg-black/60 p-3 text-center backdrop-blur">
-              <p className="text-sm font-bold">{activeBusy.label}...</p>
-              <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-white/15">
-                <motion.div
-                  className="h-full bg-amber-400"
-                  initial={{ width: 0 }}
-                  animate={{ width: "100%" }}
-                  transition={{ duration: activeBusy.spot ? 3.4 : 2.2, ease: "linear" }}
-                />
-              </div>
+      {/* activity in progress (real time) */}
+      {!asleep && current && (
+        <div className="pointer-events-none absolute inset-x-0 top-1/4 flex justify-center">
+          {busySlug ? (
+            <BusyBar
+              label={current.name}
+              untilMs={busyUntil}
+              totalMs={Number(current.duration_minutes) * 60_000}
+              skewRef={skewRef}
+              onDone={() => setNow(Date.now() + skewRef.current)}
+            />
+          ) : (
+            <div className="rounded-2xl bg-black/60 px-4 py-3 text-sm font-bold backdrop-blur">
+              {current.name}...
             </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+          )}
+        </div>
+      )}
 
-      {/* asleep: the night passes until the campus clock turns over */}
       <AnimatePresence>
-        {asleep && (
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 1.2 }}
-            className="pointer-events-none absolute inset-x-0 bottom-0 flex justify-center bg-gradient-to-t from-[#050816]/90 to-transparent pb-10 pt-24"
-          >
-            <div className="pointer-events-auto text-center">
-              <p className="text-5xl">😴</p>
-              <p className="mt-3 text-xl font-extrabold">Sleeping...</p>
-              {props.canWake ? (
-                <button
-                  type="button"
-                  onClick={wake}
-                  disabled={waking}
-                  className="mt-4 rounded-2xl bg-gradient-to-r from-amber-400 to-orange-500 px-8 py-3 font-extrabold text-black disabled:opacity-50 active:scale-95"
-                >
-                  {waking ? "Waking up..." : "Wake up"}
-                </button>
-              ) : (
-                <>
-                  <p className="mt-1 text-sm text-zinc-300">
-                    You are a full day ahead. You can wake up in
-                  </p>
-                  <p className="mt-2 text-3xl font-black">
-                    <Countdown target={world.nextDayAt}>
-                      <RefreshButton>Wake up</RefreshButton>
-                    </Countdown>
-                  </p>
-                </>
-              )}
-              {error && <p className="mt-3 text-sm text-red-300">{error}</p>}
-            </div>
-          </motion.div>
+        {asleep && s.asleep_since && (
+          <SleepOverlay
+            asleepSince={s.asleep_since}
+            energy={s.energy}
+            skewRef={skewRef}
+            waking={waking}
+            error={error}
+            onWake={wake}
+          />
         )}
       </AnimatePresence>
 
@@ -493,9 +554,7 @@ export default function GameClient(props: Props) {
         <div className="pointer-events-none absolute inset-x-0 bottom-0 p-3 sm:p-4">
           <div className="pointer-events-auto mx-auto max-w-xl rounded-3xl border border-white/10 bg-[#0b1020]/85 p-4 backdrop-blur">
             {error && (
-              <p className="mb-3 rounded-xl bg-red-500/15 p-2 text-center text-sm text-red-200">
-                {error}
-              </p>
+              <p className="mb-3 rounded-xl bg-red-500/15 p-2 text-center text-sm text-red-200">{error}</p>
             )}
 
             {roomKind && insidePlace ? (
@@ -508,7 +567,7 @@ export default function GameClient(props: Props) {
                   <button
                     type="button"
                     onClick={() => setInside(null)}
-                    disabled={activeBusy !== null}
+                    disabled={occupied}
                     className="rounded-xl border border-white/20 px-4 py-2 text-sm font-semibold disabled:opacity-40"
                   >
                     Leave
@@ -530,10 +589,7 @@ export default function GameClient(props: Props) {
                   <button
                     type="button"
                     onClick={enter}
-                    disabled={
-                      entering ||
-                      (!atCheckedInPlace && (state.hours_left < tripHours || state.energy < tripEnergy))
-                    }
+                    disabled={entering || occupied || (!atCheckedInPlace && s.energy < tripEnergy)}
                     className="flex-1 rounded-2xl bg-gradient-to-r from-amber-400 to-orange-500 py-3 font-extrabold text-black disabled:opacity-40 active:scale-95"
                   >
                     {entering
@@ -544,19 +600,15 @@ export default function GameClient(props: Props) {
                           ? "Go in"
                           : "Go there"}
                   </button>
-                  {!atCheckedInPlace && (
-                    <p className="text-xs text-zinc-300">
-                      ⏱ {tripHours}h · ⚡ -{tripEnergy}
-                    </p>
-                  )}
+                  {!atCheckedInPlace && <p className="text-xs text-zinc-300">⚡ -{tripEnergy}</p>}
                 </div>
               </>
             ) : (
               <p className="text-center text-sm text-zinc-300">
                 {here ? (
                   <>
-                    Checked in at <span className="font-bold text-white">{here.name}</span>. Walk
-                    to any glowing circle to go somewhere.
+                    Checked in at <span className="font-bold text-white">{here.name}</span>. Walk to
+                    any glowing circle to go somewhere.
                   </>
                 ) : (
                   "Walk to any glowing circle to go somewhere."
@@ -569,11 +621,19 @@ export default function GameClient(props: Props) {
           </div>
         </div>
       )}
+
       {panel === "wallet" && (
-        <WalletPanel balance={props.balance} onClose={() => setPanel(null)} onSent={() => router.refresh()} />
+        <WalletPanel
+          balance={dyn.balance_kobo}
+          onClose={() => setPanel(null)}
+          onSent={() => startTransition(async () => void apply(await refreshGameAction()))}
+        />
       )}
       {panel === "notifications" && (
-        <NotificationsPanel onClose={() => setPanel(null)} onOpened={() => router.refresh()} />
+        <NotificationsPanel
+          onClose={() => setPanel(null)}
+          onOpened={() => setDyn((d) => ({ ...d, unread: 0 }))}
+        />
       )}
     </main>
   );

@@ -29,8 +29,9 @@ export async function proxy(request: NextRequest) {
     },
   });
 
-  // Asks Supabase to verify the session and refresh it if needed.
-  await supabase.auth.getUser();
+  // Refreshes the session if needed and checks the token's signature locally
+  // (no round trip to the auth server on every page).
+  await supabase.auth.getClaims();
 
   return response;
 }

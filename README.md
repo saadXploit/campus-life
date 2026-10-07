@@ -11,6 +11,8 @@ A multiplayer university life-simulation game. Next.js (App Router) + TypeScript
 - Stage 3 (3D): explorable 3D campus with a rigged avatar, walking, building interiors where activities are acted out, waking up early (at most one day ahead of the campus calendar).
 - Stage 4 (economy): money transfers between players (no double sends, daily limits, account-age rule), wallet history, notifications, a protected ledger, admin game settings (pause new registrations, transfer limits) and audited admin wallet adjustments.
 
+- Stage 5A (real time): the game runs on real Nigerian time (WAT) for everyone. Activities take real minutes, sleep lasts as long as you like and restores energy with real time asleep, energy-giving activities have cooldowns. The whole game screen loads in one database call and every action is one call.
+
 The long-term goal is an explorable 3D multiplayer campus. All game rules live in the database (Postgres functions), so the 3D client can be added without rewriting them.
 
 ## How the game stays fair
