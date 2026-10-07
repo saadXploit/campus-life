@@ -15,17 +15,21 @@ async function getClientIp(): Promise<string> {
 
 /**
  * Counts this request and says whether it is allowed.
+ * Pass userId for signed-in actions: the limit is then per player, so students
+ * sharing one hostel Wi-Fi or mobile network do not block each other.
+ * Without it (sign-in pages), the limit is per IP address.
  * Fails CLOSED: if the counter cannot be reached, the request is refused.
  */
 export async function allowRequest(
   name: string,
   limit: number,
-  windowSeconds: number
+  windowSeconds: number,
+  options: { userId?: string } = {}
 ): Promise<boolean> {
-  const ip = await getClientIp();
+  const who = options.userId ? `u:${options.userId}` : `ip:${await getClientIp()}`;
   const admin = createAdminClient();
   const { data, error } = await admin.rpc("rate_limit_hit", {
-    p_key: `${name}:${ip}`,
+    p_key: `${name}:${who}`,
     p_limit: limit,
     p_window_seconds: windowSeconds,
   });

@@ -23,7 +23,7 @@ export async function submitApplicationAction(
 ): Promise<State> {
   const user = await requireUser();
 
-  if (!(await allowRequest("apply", 10, 600))) {
+  if (!(await allowRequest("apply", 10, 600, { userId: user.id }))) {
     return { error: "Too many attempts. Please wait a few minutes and try again." };
   }
 

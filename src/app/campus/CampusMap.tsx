@@ -179,7 +179,7 @@ export default function CampusMap({
 
               {selected.id === current?.id ? (
                 <p className="mt-4 rounded-xl bg-emerald-400/10 p-3 text-center text-sm text-emerald-300">
-                  You are here. Activities arrive in the next update.
+                  You are here. See what you can do on your home screen.
                 </p>
               ) : (
                 <>
