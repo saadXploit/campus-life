@@ -30,6 +30,7 @@ import type {
 } from "@/lib/game/gameTypes";
 import {
   BED_SPOT,
+  BOSS_SPOTS,
   ENTRY_SPOT,
   guestSpot,
   hasInterior,
@@ -45,12 +46,16 @@ import {
   slotLabel,
   type Academics,
 } from "@/lib/game/academics";
+import { jobOpen, notEligible, workBusy, type GameJob } from "@/lib/game/jobs";
 import { lightingFor } from "@/lib/game/lighting";
+import { staffLine, staffOnDuty } from "@/lib/game/staff";
+import type { PlacedStaff } from "@/components/world/People";
 import { formatClock, formatDuration, lagosDateLabel, lagosHour } from "@/lib/game/time";
 import { travelEnergy } from "@/lib/game/travel";
 import { formatNaira } from "@/lib/money";
 import AcademicsPanel from "./AcademicsPanel";
 import AdCard from "./AdCard";
+import JobsPanel from "./JobsPanel";
 import SocialPanel, { type SocialStart } from "./SocialPanel";
 import NotificationsPanel from "./NotificationsPanel";
 import PlayerCard from "./PlayerCard";
@@ -64,6 +69,7 @@ import {
 } from "./actions";
 import { academicsAction, attendLectureAction, studyAction, writeExamAction } from "./academic-actions";
 import { adViewAction } from "./ad-actions";
+import { applyJobAction, quitJobAction, startShiftAction } from "./job-actions";
 import { badgesAction, friendRequestAction, openDirectAction } from "./chat-actions";
 import type { SocialBadges } from "@/lib/game/social";
 import {
@@ -102,6 +108,10 @@ const POLL_ASLEEP = 20;
 
 /** Which body animation an activity plays. */
 function animationFor(a: GameActivity): AvatarAction {
+  if (workBusy(a.slug)) {
+    if (a.location_kind === "sports") return "exercise";
+    return a.location_kind === "faculty" ? "talk" : "busy";
+  }
   if (a.ends_day || a.slug === "nap") return "sleep";
   if (a.location_kind === "sports") return "exercise";
   if (a.slug.includes("hang") || a.location_kind === "clubhouse") return "dance";
@@ -129,6 +139,27 @@ function academicActivity(slug: string, kind: string | null): GameActivity | nul
     cooldown_minutes: 0,
   };
 }
+
+/** A work shift ("work:pos_agent") shown like any other activity while it runs. */
+function workActivity(slug: string, jobs: GameJob[]): GameActivity | null {
+  const job = jobs.find((j) => j.slug === workBusy(slug));
+  if (!job) return null;
+  return {
+    slug,
+    name: `Working: ${job.name}`,
+    description: "",
+    location_kind: job.location_kind,
+    duration_minutes: job.shift_minutes,
+    energy_delta: -job.energy_cost,
+    health_delta: 0,
+    happiness_delta: job.happiness_delta,
+    cost_kobo: 0,
+    ends_day: false,
+    cooldown_minutes: 0,
+  };
+}
+
+type Payslip = { pay: number; bonus: number; boss: string; line: string | null };
 
 /** Server time minus this device's time (only called from event handlers and effects). */
 function clockSkew(serverTime: string): number {
@@ -188,14 +219,16 @@ function BusyBar({
   untilMs: number;
   totalMs: number;
   skewRef: RefObject<number>;
-  onDone: () => void;
+  /** Called with the current server time when the countdown reaches zero. */
+  onDone: (nowMs: number) => void;
 }) {
   const [left, setLeft] = useState(totalMs);
   useEffect(() => {
     const tick = () => {
-      const l = untilMs - (Date.now() + skewRef.current);
+      const nowMs = Date.now() + skewRef.current;
+      const l = untilMs - nowMs;
       setLeft(Math.max(0, l));
-      if (l <= 0) onDone();
+      if (l <= 0) onDone(nowMs);
     };
     const first = setTimeout(tick, 0);
     const timer = setInterval(tick, 500);
@@ -281,6 +314,7 @@ type FeedLine = { id: number; text: string };
 
 export default function GameClient({ game }: { game: GameState }) {
   const { locations, activities, interactions, enrollment, ads } = game;
+  const jobs = useMemo(() => game.jobs ?? [], [game.jobs]);
   const me = game.player.id;
   const university = enrollment.university;
   const [, startTransition] = useTransition();
@@ -326,6 +360,14 @@ export default function GameClient({ game }: { game: GameState }) {
   // Academics: loaded on start, every 2 minutes (lecture windows open and close), and after each action.
   const [academics, setAcademics] = useState<Academics | null>(null);
   const [showAcademics, setShowAcademics] = useState(false);
+
+  // Jobs: the panel, the payslip shown when a shift's pay arrives, and staff you tap.
+  const [showJobs, setShowJobs] = useState(false);
+  const [jobPending, setJobPending] = useState(false);
+  const [payslip, setPayslip] = useState<Payslip | null>(null);
+  const lastPayId = useRef(game.job?.last_pay?.id ?? 0);
+  const paidCheck = useRef<string | null>(null);
+  const [staffSelected, setStaffSelected] = useState<string | null>(null);
 
   // Friends, chats and dating: small badge counts polled every 20 seconds.
   const [badges, setBadges] = useState<SocialBadges | null>(null);
@@ -421,6 +463,12 @@ export default function GameClient({ game }: { game: GameState }) {
     }
     const d = result.dynamic;
     skewRef.current = clockSkew(d.server_time);
+    const pay = d.job?.last_pay;
+    if (pay && pay.id > lastPayId.current) {
+      lastPayId.current = pay.id;
+      const boss = jobs.find((j) => j.slug === pay.job)?.boss_name ?? "Your boss";
+      setPayslip({ pay: pay.pay_kobo, bonus: pay.bonus_kobo, boss, line: pay.boss_line });
+    }
     setDyn(d);
     setNow(Date.parse(d.server_time));
     return true;
@@ -521,7 +569,9 @@ export default function GameClient({ game }: { game: GameState }) {
   const busySlug = busyUntil > now ? s.busy_activity : null;
   const currentSlug = pending ?? busySlug;
   const current: GameActivity | null = currentSlug
-    ? (activities.find((a) => a.slug === currentSlug) ?? academicActivity(currentSlug, s.location_kind))
+    ? (activities.find((a) => a.slug === currentSlug) ??
+      academicActivity(currentSlug, s.location_kind) ??
+      workActivity(currentSlug, jobs))
     : null;
   const occupied = current !== null;
 
@@ -567,6 +617,7 @@ export default function GameClient({ game }: { game: GameState }) {
     const fx = effects[p.id]?.pose;
     if (fx) return fx;
     if (p.asleep) return "sleep";
+    if (p.activity && workBusy(p.activity)) return slotPose === "sit" ? "sit" : "busy";
     const act = p.activity ? activities.find((a) => a.slug === p.activity) : null;
     if (act) return slotPose === "sit" ? "sit" : animationFor(act);
     return slotPose ?? "idle";
@@ -614,6 +665,28 @@ export default function GameClient({ game }: { game: GameState }) {
         };
       })
     : [];
+
+  // ---------- Jobs and campus staff ----------
+  const myJob = dyn.job?.slug ? (jobs.find((j) => j.slug === dyn.job?.slug) ?? null) : null;
+  const placeJob = jobs.find((j) => j.location_kind === s.location_kind) ?? null;
+  const meForJobs = {
+    level: enrollment.level_year,
+    cgpa: academics?.cgpa ?? null,
+    age: game.player.age ?? null,
+  };
+  // Staff on duty come from the clock alone: no network traffic, same for everyone.
+  const dutyHour = Math.floor(hour);
+  const onDuty = useMemo(() => staffOnDuty(dutyHour, jobs), [dutyHour, jobs]);
+  const roomStaff: PlacedStaff[] = roomKind
+    ? onDuty
+        .filter((m) => m.indoors && m.kind === roomKind && BOSS_SPOTS[roomKind])
+        .map((m) => ({ staff: m, ...BOSS_SPOTS[roomKind] }))
+    : [];
+  const staffMember = staffSelected ? (onDuty.find((m) => m.id === staffSelected) ?? null) : null;
+  const staffBubbles: Record<string, string> = staffMember
+    ? { [staffMember.id]: staffLine(staffMember, now) }
+    : {};
+  const placeName = (kind: string) => locations.find((l) => l.kind === kind)?.name ?? kind;
 
   const selectedPerson = people.find((p) => p.id === selected) ?? null;
   const placeInteractions: GameInteraction[] = interactions.filter((i) =>
@@ -725,6 +798,50 @@ export default function GameClient({ game }: { game: GameState }) {
       if (a.cost_kobo) parts.push(`-${formatNaira(a.cost_kobo)}`);
       setToast(parts);
     });
+  }
+
+  function applyJob(slug: string) {
+    setError(null);
+    setJobPending(true);
+    startTransition(async () => {
+      const ok = apply(await applyJobAction(slug));
+      setJobPending(false);
+      const j = jobs.find((x) => x.slug === slug);
+      if (ok && j) setToast([`💼 ${j.boss_name} hired you!`]);
+    });
+  }
+
+  function quitJob() {
+    setError(null);
+    setJobPending(true);
+    startTransition(async () => {
+      const ok = apply(await quitJobAction());
+      setJobPending(false);
+      if (ok) setToast(["You quit your job"]);
+    });
+  }
+
+  function startShift() {
+    if (!myJob) return;
+    setError(null);
+    setJobPending(true);
+    setShowJobs(false);
+    setPending(`work:${myJob.slug}`);
+    startTransition(async () => {
+      const ok = apply(await startShiftAction());
+      setJobPending(false);
+      setPending(null);
+      if (ok) setToast([`💼 Shift started · ⚡ -${myJob.energy_cost}`]);
+    });
+  }
+
+  /** An activity finished: move the clock on, and after a shift ask once for fresh state so the pay shows up. */
+  function shiftMaybeOver(nowMs: number) {
+    setNow(nowMs);
+    const until = s.busy_until;
+    if (!until || !workBusy(s.busy_activity ?? "") || paidCheck.current === until) return;
+    paidCheck.current = until;
+    setTimeout(() => startTransition(async () => void apply(await refreshGameAction())), 2000);
   }
 
   function wake() {
@@ -994,6 +1111,61 @@ export default function GameClient({ game }: { game: GameState }) {
       </div>
     ) : null;
 
+  // Your job here, or the boss here who is hiring.
+  const jobBlock =
+    placeJob && atPlace ? (
+      myJob?.slug === placeJob.slug && dyn.job ? (
+        <div className="mt-3 rounded-2xl border border-emerald-400/25 bg-emerald-400/5 p-3">
+          <div className="flex items-center justify-between gap-2">
+            <p className="text-sm font-bold">
+              💼 Your job: {myJob.name}
+              <span className="block text-[11px] font-normal text-zinc-400">
+                {formatNaira(dyn.job.pay_kobo ?? myJob.pay_kobo)} a shift · {dyn.job.shifts_today}/
+                {dyn.job.daily_limit} today
+              </span>
+            </p>
+            <button
+              type="button"
+              onClick={startShift}
+              disabled={
+                occupied ||
+                jobPending ||
+                !jobOpen(myJob.open_hour, myJob.close_hour, hour) ||
+                dyn.job.shifts_today >= dyn.job.daily_limit ||
+                s.energy < myJob.energy_cost
+              }
+              className="shrink-0 rounded-xl bg-emerald-400 px-3 py-2 text-sm font-bold text-black disabled:opacity-40"
+            >
+              {!jobOpen(myJob.open_hour, myJob.close_hour, hour)
+                ? "Closed now"
+                : dyn.job.shifts_today >= dyn.job.daily_limit
+                  ? "Done for today"
+                  : s.energy < myJob.energy_cost
+                    ? "Too tired"
+                    : "Start shift"}
+            </button>
+          </div>
+        </div>
+      ) : !myJob ? (
+        <div className="mt-3 flex items-center justify-between gap-2 rounded-2xl border border-sky-400/20 bg-sky-400/5 p-3">
+          <p className="min-w-0 text-sm">
+            💼 <span className="font-bold">{placeJob.boss_name}</span> is hiring: {placeJob.name}
+            <span className="block text-[11px] text-zinc-400">
+              {formatNaira(placeJob.pay_kobo)} a shift
+              {notEligible(placeJob, meForJobs) ? ` · ${notEligible(placeJob, meForJobs)}` : ""}
+            </span>
+          </p>
+          <button
+            type="button"
+            onClick={() => setShowJobs(true)}
+            className="shrink-0 rounded-xl bg-sky-400 px-3 py-2 text-sm font-bold text-black"
+          >
+            See job
+          </button>
+        </div>
+      ) : null
+    ) : null;
+
   // Who is here, what just happened, and a box to say something.
   const socialBlock = atPlace ? (
     <div className="mt-3 border-t border-white/10 pt-3">
@@ -1093,6 +1265,9 @@ export default function GameClient({ game }: { game: GameState }) {
             roomLabel={roomLabel}
             department={enrollment.department ?? null}
             lecturer={liveMine ? lecturerFor(liveMine.code) : null}
+            staff={roomStaff}
+            staffBubbles={staffBubbles}
+            onSelectStaff={setStaffSelected}
           />
         ) : webgl ? (
           <CampusWorld
@@ -1114,6 +1289,9 @@ export default function GameClient({ game }: { game: GameState }) {
             onSelectAd={setOpenAd}
             faculties={game.faculties ?? []}
             myFaculty={enrollment.faculty ?? null}
+            staff={onDuty}
+            staffBubbles={staffBubbles}
+            onSelectStaff={setStaffSelected}
           />
         ) : null}
       </div>
@@ -1215,6 +1393,15 @@ export default function GameClient({ game }: { game: GameState }) {
               {academics.cgpa !== null && ` · CGPA ${Number(academics.cgpa).toFixed(2)}`}
             </button>
           )}
+          {myJob && dyn.job && (
+            <button
+              type="button"
+              onClick={() => setShowJobs(true)}
+              className="pointer-events-auto text-left text-[11px] font-semibold text-emerald-300"
+            >
+              💼 {myJob.name} · {dyn.job.shifts_today}/{dyn.job.daily_limit} shifts today
+            </button>
+          )}
         </div>
 
         <AnimatePresence>
@@ -1244,6 +1431,16 @@ export default function GameClient({ game }: { game: GameState }) {
                 className="block w-full rounded-xl px-3 py-2 text-left hover:bg-white/10"
               >
                 📚 Academics
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setMenu(false);
+                  setShowJobs(true);
+                }}
+                className="block w-full rounded-xl px-3 py-2 text-left hover:bg-white/10"
+              >
+                💼 Jobs
               </button>
               <button
                 type="button"
@@ -1306,7 +1503,7 @@ export default function GameClient({ game }: { game: GameState }) {
               untilMs={busyUntil}
               totalMs={Number(current.duration_minutes) * 60_000}
               skewRef={skewRef}
-              onDone={() => setNow(Date.now() + skewRef.current)}
+              onDone={shiftMaybeOver}
             />
           ) : (
             <div className="rounded-2xl bg-black/60 px-4 py-3 text-sm font-bold backdrop-blur">
@@ -1417,6 +1614,7 @@ export default function GameClient({ game }: { game: GameState }) {
                   </button>
                 )}
                 {academicBlock}
+                {jobBlock}
                 {activityList}
                 {socialBlock}
               </>
@@ -1444,6 +1642,7 @@ export default function GameClient({ game }: { game: GameState }) {
                     </div>
                   </div>
                 )}
+                {jobBlock}
                 {activityList}
                 {socialBlock}
               </>
@@ -1575,6 +1774,89 @@ export default function GameClient({ game }: { game: GameState }) {
       )}
       {showAcademics && (
         <AcademicsPanel academics={academics} nowMs={now} onClose={() => setShowAcademics(false)} />
+      )}
+
+      {showJobs && (
+        <JobsPanel
+          jobs={jobs}
+          job={dyn.job ?? null}
+          hour={hour}
+          nowMs={now}
+          me={meForJobs}
+          hereKind={s.location_kind}
+          placeName={placeName}
+          occupied={occupied || asleep}
+          pending={jobPending}
+          onApply={applyJob}
+          onQuit={quitJob}
+          onStartShift={startShift}
+          onClose={() => setShowJobs(false)}
+        />
+      )}
+
+      {payslip && (
+        <div className="absolute inset-0 z-40 flex items-center justify-center bg-black/50 p-6" onClick={() => setPayslip(null)}>
+          <motion.div
+            initial={{ scale: 0.9, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            className="w-full max-w-xs rounded-3xl border border-emerald-400/30 bg-[#10172e] p-5 text-center"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <p className="text-4xl">💰</p>
+            <p className="mt-1 text-xs font-semibold tracking-[0.2em] text-emerald-300">PAYDAY</p>
+            <p className="text-3xl font-black text-emerald-300">+{formatNaira(payslip.pay + payslip.bonus)}</p>
+            {payslip.bonus > 0 && (
+              <p className="text-xs text-zinc-300">
+                {formatNaira(payslip.pay)} pay + {formatNaira(payslip.bonus)} bonus 🎁
+              </p>
+            )}
+            {payslip.line && (
+              <p className="mt-3 text-sm italic text-zinc-200">
+                {payslip.boss}: “{payslip.line}”
+              </p>
+            )}
+            <button
+              type="button"
+              onClick={() => setPayslip(null)}
+              className="mt-4 w-full rounded-xl bg-emerald-400 py-2 font-bold text-black"
+            >
+              Nice!
+            </button>
+          </motion.div>
+        </div>
+      )}
+
+      {staffMember && (
+        <div className="absolute inset-0 z-30 flex items-end justify-center bg-black/30 sm:items-center" onClick={() => setStaffSelected(null)}>
+          <div
+            className="w-full max-w-sm rounded-t-3xl border border-sky-400/20 bg-[#10172e] p-5 sm:rounded-3xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <p className="text-xs font-semibold tracking-[0.2em] text-sky-300">CAMPUS STAFF</p>
+            <p className="text-xl font-extrabold">{staffMember.name}</p>
+            <p className="text-sm text-zinc-400">{staffMember.title} · part of the game, not a player</p>
+            <p className="mt-3 rounded-2xl bg-white/5 p-3 text-sm italic">“{staffLine(staffMember, now)}”</p>
+            {staffMember.jobSlug && (
+              <button
+                type="button"
+                onClick={() => {
+                  setStaffSelected(null);
+                  setShowJobs(true);
+                }}
+                className="mt-3 w-full rounded-xl bg-sky-400 py-2 font-bold text-black"
+              >
+                {myJob?.slug === staffMember.jobSlug ? "💼 Your job" : "💼 See the job"}
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={() => setStaffSelected(null)}
+              className="mt-2 w-full rounded-xl border border-white/15 py-2 text-sm"
+            >
+              Close
+            </button>
+          </div>
+        </div>
       )}
 
       {panel === "wallet" && (

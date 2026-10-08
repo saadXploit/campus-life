@@ -17,7 +17,7 @@ import { lightingFor } from "@/lib/game/lighting";
 import { seededRandom } from "@/lib/game/worldLayout";
 import type { WorldAvatar } from "./CampusWorld";
 import { makeLabelTexture } from "./labels";
-import { Bubble, NameTag, OtherPlayer, type ShownPerson } from "./People";
+import { Bubble, NameTag, OtherPlayer, StaffNpc, type PlacedStaff, type ShownPerson } from "./People";
 
 type V3 = [number, number, number];
 
@@ -603,6 +603,9 @@ export default function InteriorScene({
   department,
   lecturer,
   roomLabel,
+  staff = [],
+  staffBubbles = {},
+  onSelectStaff,
 }: {
   kind: string;
   avatar: WorldAvatar;
@@ -626,6 +629,10 @@ export default function InteriorScene({
   lecturer?: Lecturer | null;
   /** "Room 12": which room of this place you are in. */
   roomLabel?: string | null;
+  /** Staff working in this room (the boss, for example), already placed. */
+  staff?: PlacedStaff[];
+  staffBubbles?: Record<string, string>;
+  onSelectStaff?: (id: string) => void;
 }) {
   const light = lightingFor(hour);
   const club = kind === "clubhouse";
@@ -661,6 +668,14 @@ export default function InteriorScene({
 
       {guests.map((g) => (
         <OtherPlayer key={g.id} p={g} onSelect={onSelectPerson} />
+      ))}
+      {staff.map((p) => (
+        <StaffNpc
+          key={p.staff.id}
+          p={p}
+          bubble={staffBubbles[p.staff.id] ?? null}
+          onSelect={(id) => onSelectStaff?.(id)}
+        />
       ))}
       <InteriorPlayer avatar={avatar} spot={spot} bubble={selfBubble} poseOverride={selfPose} />
       <CameraRig />

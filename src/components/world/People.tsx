@@ -1,15 +1,84 @@
 "use client";
 
-import { useEffect, useMemo } from "react";
-import type { ThreeEvent } from "@react-three/fiber";
+import { useEffect, useMemo, useRef } from "react";
+import { useFrame, type ThreeEvent } from "@react-three/fiber";
+import type { Group } from "three";
 import Avatar3D from "@/components/scene/Avatar3D";
 import type { Pose } from "@/lib/game/interiors";
+import { UNIFORMS, type StaffMember } from "@/lib/game/staff";
 import { makeLabelTexture } from "./labels";
 
-export function NameTag({ name, highlight = false }: { name: string; highlight?: boolean }) {
+export type PlacedStaff = { staff: StaffMember; x: number; y: number; z: number; heading: number; pose: Pose };
+
+/**
+ * A staff character (security, cleaner, boss...). Drawn by the game, never a real player,
+ * so it costs no network traffic. Patrolling guards walk up and down by themselves.
+ */
+export function StaffNpc({
+  p,
+  bubble,
+  onSelect,
+}: {
+  p: PlacedStaff;
+  bubble: string | null;
+  onSelect: (id: string) => void;
+}) {
+  const group = useRef<Group>(null);
+  const { staff } = p;
+  const uniform = staff.uniform ? UNIFORMS[staff.uniform] : null;
+
+  useFrame((state) => {
+    const g = group.current;
+    if (!g || !staff.patrol) return;
+    const t = state.clock.elapsedTime * 0.22;
+    g.position.x = p.x + Math.sin(t) * 5;
+    g.rotation.y = Math.cos(t) >= 0 ? Math.PI / 2 : -Math.PI / 2;
+  });
+
+  function click(e: ThreeEvent<MouseEvent>) {
+    e.stopPropagation();
+    onSelect(staff.id);
+  }
+
+  return (
+    <group ref={group} position={[p.x, p.y, p.z]} rotation={[0, p.heading, 0]} onClick={click}>
+      <Avatar3D
+        skin={staff.avatar.skin}
+        hairStyle={staff.avatar.hairStyle}
+        hairColor={staff.avatar.hairColor}
+        outfit={staff.avatar.outfit}
+        shirtColor={uniform?.shirt}
+        trouserColor={uniform?.trousers}
+        capColor={uniform?.cap ?? null}
+        action={staff.patrol ? "walk" : p.pose}
+      />
+      <mesh position={[0, 1, 0]} visible={false}>
+        <cylinderGeometry args={[0.55, 0.55, 2.2, 8]} />
+        <meshBasicMaterial />
+      </mesh>
+      <NameTag name={`${staff.name} · ${staff.title}`} accent="#38bdf8" />
+      {bubble && <Bubble text={bubble} />}
+    </group>
+  );
+}
+
+export function NameTag({
+  name,
+  highlight = false,
+  accent,
+}: {
+  name: string;
+  highlight?: boolean;
+  /** Underline colour; staff use blue so they are never mistaken for players. */
+  accent?: string;
+}) {
   const label = useMemo(
-    () => makeLabelTexture(name, { width: 384, accent: highlight ? "#34d399" : "#fbbf24" }),
-    [name, highlight]
+    () =>
+      makeLabelTexture(name, {
+        width: accent ? 512 : 384,
+        accent: accent ?? (highlight ? "#34d399" : "#fbbf24"),
+      }),
+    [name, highlight, accent]
   );
   useEffect(() => () => label.texture.dispose(), [label]);
   return (

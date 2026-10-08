@@ -24,6 +24,8 @@ A multiplayer university life-simulation game. Next.js (App Router) + TypeScript
 
 - Stage 8B (crowd control): busy places split into rooms (you join where your friends are), you see active friends plus a few nearby strangers who share their location, only active players appear live, your own hostel room with roommates, visiting a friend's room, admin crowd settings, and a folding panel so rooms stay visible.
 
+- Stage 9 (jobs and campus staff): 8 jobs paying ₦5,000 to ₦20,000 a shift, bosses who are staff characters (never players), real-time shifts paid when they end, raises after 10 and 30 shifts, a daily shift limit, requirements (level, CGPA, age), admin pay controls; security guards, cleaners, porters and a groundsman on duty by the clock, drawn by the game with no network traffic.
+
 The long-term goal is an explorable 3D multiplayer campus. All game rules live in the database (Postgres functions), so the 3D client can be added without rewriting them.
 
 ## How the game stays fair

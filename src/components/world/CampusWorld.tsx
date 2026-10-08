@@ -7,7 +7,8 @@ import Avatar3D, { type AvatarAction } from "@/components/scene/Avatar3D";
 import { lightingFor } from "@/lib/game/lighting";
 import type { GameAd } from "@/lib/game/gameTypes";
 import { PLAYER_RADIUS, ZONE_RADIUS, resolveCollision, type Box } from "@/lib/game/worldLayout";
-import { Bubble, NameTag, OtherPlayer, type ShownPerson } from "./People";
+import type { StaffMember } from "@/lib/game/staff";
+import { Bubble, NameTag, OtherPlayer, StaffNpc, type PlacedStaff, type ShownPerson } from "./People";
 import { CampusBase, useCampusLayout, type Placed, type WorldLocation } from "./Scenery";
 
 export type { WorldLocation };
@@ -39,7 +40,14 @@ type Props = {
   onSelectAd: (ad: GameAd) => void;
   faculties: string[];
   myFaculty: string | null;
+  /** Staff on duty outdoors right now (security, cleaners, bosses). */
+  staff: StaffMember[];
+  staffBubbles: Record<string, string>;
+  onSelectStaff: (id: string) => void;
 };
+
+/** Spots beside each door for staff: right, left, far right, far left. */
+const STAFF_SLOTS = [4.4, -4.4, 6.4, -6.4];
 
 const WALK_SPEED = 7;
 const RUN_SPEED = 11;
@@ -302,6 +310,9 @@ export default function CampusWorld({
   onSelectAd,
   faculties,
   myFaculty,
+  staff,
+  staffBubbles,
+  onSelectStaff,
 }: Props) {
   const targetRef = useRef<{ x: number; z: number } | null>(null);
   const [activeZone, setActiveZone] = useState<string | null>(null);
@@ -331,6 +342,25 @@ export default function CampusWorld({
     }
     return out;
   }, [crowd, placed]);
+
+  // Staff stand beside the door, between the building and where players gather.
+  const placedStaff: PlacedStaff[] = useMemo(() => {
+    const out: PlacedStaff[] = [];
+    for (const m of staff) {
+      if (m.indoors) continue;
+      const place = placed.find((p) => p.kind === m.kind);
+      if (!place) continue;
+      out.push({
+        staff: m,
+        x: place.entrance.x + (m.patrol ? 0 : STAFF_SLOTS[m.slot % STAFF_SLOTS.length]),
+        y: 0,
+        z: place.entrance.z - 2.1,
+        heading: 0,
+        pose: "idle",
+      });
+    }
+    return out;
+  }, [staff, placed]);
 
   const spawnPlace = placed.find((p) => p.kind === spawnKind) ?? placed[0];
   const spawn = spawnPlace ? spawnPlace.entrance : { x: 0, z: 0 };
@@ -376,6 +406,9 @@ export default function CampusWorld({
 
       {shown.map((p) => (
         <OtherPlayer key={p.id} p={p} onSelect={onSelectPerson} />
+      ))}
+      {placedStaff.map((p) => (
+        <StaffNpc key={p.staff.id} p={p} bubble={staffBubbles[p.staff.id] ?? null} onSelect={onSelectStaff} />
       ))}
 
       <Player

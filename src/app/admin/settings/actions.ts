@@ -19,6 +19,9 @@ const schema = z.object({
   visible_strangers: z.coerce.number().int().min(0).max(50),
   visible_friends: z.coerce.number().int().min(1).max(100),
   presence_seconds: z.coerce.number().int().min(30).max(600),
+  job_pay_percent: z.coerce.number().int().min(10).max(300),
+  job_daily_shifts: z.coerce.number().int().min(1).max(10),
+  job_change_hours: z.coerce.number().int().min(0).max(168),
 });
 
 export async function saveSettingsAction(formData: FormData): Promise<void> {
@@ -39,6 +42,9 @@ export async function saveSettingsAction(formData: FormData): Promise<void> {
     visible_strangers: v.visible_strangers,
     visible_friends: v.visible_friends,
     presence_seconds: v.presence_seconds,
+    job_pay_percent: v.job_pay_percent,
+    job_daily_shifts: v.job_daily_shifts,
+    job_change_hours: v.job_change_hours,
   };
 
   const admin = createAdminClient();

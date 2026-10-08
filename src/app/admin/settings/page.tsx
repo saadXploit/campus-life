@@ -131,6 +131,26 @@ export default async function SettingsPage({
             </label>
           </section>
 
+          <section className="space-y-4 rounded-2xl border border-white/10 bg-white/5 p-5">
+            <h2 className="text-lg font-bold">Jobs</h2>
+            <p className="text-sm text-zinc-400">
+              Players earn money from job shifts. If there is too much money in the game, lower the pay
+              or the shifts per day. Changes apply to shifts started from now on.
+            </p>
+            <label className="block text-sm text-zinc-300">
+              Pay for every job (% of normal pay)
+              <input name="job_pay_percent" type="number" min={10} max={300} defaultValue={num(cfg, "job_pay_percent", 100)} className={field} />
+            </label>
+            <label className="block text-sm text-zinc-300">
+              Shifts a player can work per day
+              <input name="job_daily_shifts" type="number" min={1} max={10} defaultValue={num(cfg, "job_daily_shifts", 3)} className={field} />
+            </label>
+            <label className="block text-sm text-zinc-300">
+              Hours a player must wait after quitting before taking a new job
+              <input name="job_change_hours" type="number" min={0} max={168} defaultValue={num(cfg, "job_change_hours", 24)} className={field} />
+            </label>
+          </section>
+
           <button type="submit" className="w-full rounded-xl bg-red-500 px-4 py-3 text-sm font-bold text-white">
             Save settings
           </button>

@@ -48,11 +48,34 @@ export const ACTIVITY_SPOTS: Record<string, Spot> = {
 /** Your desk in the lecture room (lectures and exams). */
 export const LECTURE_SEAT: Spot = { x: -0.6, y: 0, z: 0.8, heading: Math.PI, pose: "sit" };
 
+/** Where you stand while working a shift, per room. */
+export const WORK_SPOTS: Record<string, Spot> = {
+  hostel: { x: 1.2, y: 0, z: -2.3, heading: Math.PI, pose: "busy" },
+  cafeteria: { x: -3.9, y: 0, z: -3.2, heading: 0.6, pose: "busy" },
+  library: { x: -1.5, y: 0, z: -3.0, heading: Math.PI, pose: "busy" },
+  faculty: { x: -1.2, y: 0, z: -2.6, heading: 0, pose: "talk" },
+  clubhouse: { x: -3.3, y: 0, z: -1.0, heading: -Math.PI / 2, pose: "busy" },
+  health: { x: 3.5, y: 0, z: 0.8, heading: Math.PI / 2, pose: "busy" },
+};
+
+/** Where the boss (a staff character) stands in their workplace. */
+export const BOSS_SPOTS: Record<string, Spot> = {
+  cafeteria: { x: 3.9, y: 0, z: -3.2, heading: -0.6, pose: "idle" },
+  library: { x: 3.4, y: 0, z: -2.7, heading: -0.5, pose: "idle" },
+  faculty: { x: -4.2, y: 0, z: -2.6, heading: 0.6, pose: "idle" },
+  clubhouse: { x: 3.6, y: 0, z: 1.6, heading: -1.2, pose: "idle" },
+  health: { x: 2.8, y: 0, z: -3.2, heading: 0, pose: "sit" },
+};
+
 /**
  * Where an activity happens. Academic work ("lecture:CSC111", "study:...", "exam:...")
- * sits you at a desk; unknown activities play in the middle of the room.
+ * sits you at a desk, a work shift ("work:pos_agent") puts you at your post, and
+ * unknown activities play in the middle of the room.
  */
 export function spotFor(slug: string, fallback: Pose, roomKind: string | null = null): Spot {
+  if (slug.startsWith("work:")) {
+    return (roomKind && WORK_SPOTS[roomKind]) || { x: 0, y: 0, z: 0.5, heading: 0, pose: fallback };
+  }
   if (slug.startsWith("lecture:") || slug.startsWith("exam:")) return LECTURE_SEAT;
   if (slug.startsWith("study:")) {
     return roomKind === "hostel" ? ACTIVITY_SPOTS.bread_and_tea : ACTIVITY_SPOTS.quiet_reading;

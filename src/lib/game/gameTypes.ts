@@ -1,5 +1,7 @@
 /** Shapes returned by the game database functions (get_game_state and the actions). */
 
+import type { GameJob, PlayerJob } from "./jobs";
+
 export type GameLocation = {
   id: string;
   name: string;
@@ -109,6 +111,8 @@ export type GameDynamic = {
   balance_kobo: number;
   unread: number;
   cooldowns: Record<string, string>;
+  /** Your job, or null if you have never had one. */
+  job?: PlayerJob | null;
   server_time: string;
 };
 
@@ -117,6 +121,7 @@ export type GameState = GameDynamic & {
   player: {
     id: string;
     name: string;
+    age?: number;
     skin: number;
     hair_style: number;
     hair_color: number;
@@ -134,6 +139,8 @@ export type GameState = GameDynamic & {
   locations: GameLocation[];
   activities: GameActivity[];
   interactions: GameInteraction[];
+  /** Jobs on campus (each boss is a staff character). */
+  jobs?: GameJob[];
   ads: GameAd[];
 };
 

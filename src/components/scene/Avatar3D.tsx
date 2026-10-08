@@ -17,6 +17,10 @@ type Props = {
   position?: [number, number, number];
   rotationY?: number;
   action?: AvatarAction;
+  /** Staff uniforms: override the shirt and trousers, and add a cap. */
+  shirtColor?: string;
+  trouserColor?: string;
+  capColor?: string | null;
 };
 
 const HIP_Y = 0.78;
@@ -39,6 +43,9 @@ export default function Avatar3D({
   position = [0, 0, 0],
   rotationY = 0,
   action = "idle",
+  shirtColor,
+  trouserColor = "#1f2937",
+  capColor = null,
 }: Props) {
   const body = useRef<Group>(null);
   const head = useRef<Group>(null);
@@ -49,7 +56,7 @@ export default function Avatar3D({
 
   const skinColor = SKIN_TONES[skin] ?? SKIN_TONES[0];
   const hair = HAIR_COLORS[hairColor] ?? HAIR_COLORS[0];
-  const shirt = OUTFIT_COLORS[outfit] ?? OUTFIT_COLORS[0];
+  const shirt = shirtColor ?? OUTFIT_COLORS[outfit] ?? OUTFIT_COLORS[0];
 
   useFrame((state, delta) => {
     const b = body.current;
@@ -185,7 +192,7 @@ export default function Avatar3D({
           <group key={x} ref={ref} position={[x, HIP_Y, 0]}>
             <mesh position={[0, -0.36, 0]} castShadow>
               <capsuleGeometry args={[0.095, 0.55, 4, 10]} />
-              <meshStandardMaterial color="#1f2937" roughness={0.9} />
+              <meshStandardMaterial color={trouserColor} roughness={0.9} />
             </mesh>
             <mesh position={[0, -0.74, 0.05]} castShadow>
               <boxGeometry args={[0.17, 0.09, 0.3]} />
@@ -287,6 +294,18 @@ export default function Avatar3D({
             </>
           )}
           {hairStyle === 5 && <Cap r={0.228} tilt={-0.95} color={hair} />}
+          {capColor && (
+            <group position={[0, 0.12, 0]}>
+              <mesh castShadow>
+                <cylinderGeometry args={[0.24, 0.25, 0.16, 16]} />
+                <meshStandardMaterial color={capColor} roughness={0.8} />
+              </mesh>
+              <mesh position={[0, -0.06, 0.2]}>
+                <boxGeometry args={[0.3, 0.03, 0.18]} />
+                <meshStandardMaterial color={capColor} roughness={0.8} />
+              </mesh>
+            </group>
+          )}
         </group>
       </group>
     </group>
