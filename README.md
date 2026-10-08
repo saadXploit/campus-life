@@ -40,6 +40,8 @@ A multiplayer university life-simulation game. Next.js (App Router) + TypeScript
 
 - Stage 16 (short semesters): a semester is 2 weeks (10 days of lectures, 2 of exams, 2 of holiday); every course meets twice a day; attending half of the lectures held counts as full attendance; fees are due 5 days in. The running semester keeps its start date.
 
+- Stage 17 (physiotherapy and mini-map): DPT Physiotherapy (6 years, Faculty of Health Sciences); a mini-map in the corner of the game showing the campus, you (moving live) and your online friends, which opens into a bigger map with where each friend is, what they are doing and a Join button. Live at campus-life.study; the old netlify.app address redirects there.
+
 The long-term goal is an explorable 3D multiplayer campus. All game rules live in the database (Postgres functions), so the 3D client can be added without rewriting them.
 
 ## How the game stays fair

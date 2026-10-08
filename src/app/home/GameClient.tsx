@@ -56,6 +56,8 @@ import { formatNaira } from "@/lib/money";
 import AcademicsPanel from "./AcademicsPanel";
 import AdCard from "./AdCard";
 import JobsPanel from "./JobsPanel";
+import MiniMap from "@/components/MiniMap";
+import { worldToMap } from "@/lib/game/minimap";
 import FeesPanel from "./FeesPanel";
 import { unpaid, type Bills } from "@/lib/game/bills";
 import OutingSheet from "./OutingSheet";
@@ -426,6 +428,8 @@ export default function GameClient({ game }: { game: GameState }) {
   // Shop items: what you wear and drive, the shop, driving and lifts.
   const [style, setStyle] = useState<Record<string, string>>(game.player.style ?? {});
   const [showShop, setShowShop] = useState(false);
+  // Where you are on the mini-map while walking outdoors (0-100 campus map).
+  const [mapPos, setMapPos] = useState<{ mx: number; my: number } | null>(null);
   // School fees and rent: checked with academics, and after paying.
   const [bills, setBills] = useState<Bills | null>(null);
   const [showFees, setShowFees] = useState(false);
@@ -1539,6 +1543,7 @@ export default function GameClient({ game }: { game: GameState }) {
             spawnKey="campus"
             action={avatarAction}
             onZoneChange={setZone}
+            onPlayerMove={(x, z) => setMapPos(worldToMap(x, z))}
             crowd={crowd}
             selfBubble={myEffect?.bubble ?? null}
             onSelectPerson={setSelected}
@@ -1555,6 +1560,20 @@ export default function GameClient({ game }: { game: GameState }) {
           />
         ) : null}
       </div>
+
+      {/* mini-map: you and your friends (drawn under the menu, so the menu opens over it) */}
+      {webgl !== false && (
+        <div className="pointer-events-none absolute right-3 top-[7.5rem] sm:right-4 sm:top-32">
+          <MiniMap
+            locations={locations}
+            me={roomKind ? null : mapPos}
+            hereKind={s.location_kind}
+            friends={people.filter((p) => p.friend)}
+            activityName={(slug) => activities.find((a) => a.slug === slug)?.name ?? null}
+            onJoin={joinRoom}
+          />
+        </div>
+      )}
 
       {/* top bar */}
       <div className="pointer-events-none absolute inset-x-0 top-0 p-3 sm:p-4">

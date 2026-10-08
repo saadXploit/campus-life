@@ -1,0 +1,9 @@
+# Netlify settings for Campus Life.
+# Everyone who opens the old netlify.app address is sent to the real domain, so sign-in
+# always happens (and stays) on campus-life.study.
+
+[[redirects]]
+  from = "https://liveyourcampuslife.netlify.app/*"
+  to = "https://campus-life.study/:splat"
+  status = 301
+  force = true

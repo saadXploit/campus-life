@@ -50,6 +50,8 @@ type Props = {
   appearance?: Appearance;
   /** Your car and the cars of people you can see, parked by the main gate. */
   playerCars?: PlayerCar[];
+  /** Your position while you walk (for the mini-map). */
+  onPlayerMove?: (x: number, z: number) => void;
 };
 
 /** Spots beside each door for staff: right, left, far right, far left. */
@@ -106,7 +108,10 @@ function Player({
   onZoneChange,
   stage,
   appearance,
+  onMove,
 }: {
+  /** Called about twice a second with your position while you walk (for the mini-map). */
+  onMove?: (x: number, z: number) => void;
   appearance?: Appearance;
   /** While playing sport: the spot on the pitch to run to (and around, for football). */
   stage: { x: number; z: number } | null;
@@ -131,6 +136,7 @@ function Player({
   const pos = useRef({ x: spawn.x, z: spawn.z, heading: Math.PI });
   const keys = useRef(new Set<string>());
   const zoneRef = useRef<string | null>(null);
+  const lastReport = useRef({ t: -1, x: Infinity, z: Infinity });
   const zoom = useRef(1);
   const [moving, setMoving] = useState(false);
   const movingRef = useRef(false);
@@ -272,6 +278,13 @@ function Player({
         break;
       }
     }
+    // Tell the mini-map where you are, at most twice a second and only after moving.
+    const last = lastReport.current;
+    if (onMove && clock.elapsedTime - last.t > 0.5 && Math.hypot(p.x - last.x, p.z - last.z) > 0.3) {
+      lastReport.current = { t: clock.elapsedTime, x: p.x, z: p.z };
+      onMove(p.x, p.z);
+    }
+
     if (inZone !== zoneRef.current) {
       zoneRef.current = inZone;
       onZoneChange(inZone);
@@ -342,6 +355,7 @@ export default function CampusWorld({
   onSelectStaff,
   appearance,
   playerCars = [],
+  onPlayerMove,
 }: Props) {
   const targetRef = useRef<{ x: number; z: number } | null>(null);
   const [activeZone, setActiveZone] = useState<string | null>(null);
@@ -461,6 +475,7 @@ export default function CampusWorld({
         spawnKey={spawnKey}
         stage={stage}
         appearance={appearance}
+        onMove={onPlayerMove}
         obstacles={obstacles}
         zones={zones}
         locked={action !== null}
