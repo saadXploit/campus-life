@@ -7,6 +7,7 @@ import {
   phaseLabel,
   semesterName,
   slotLabel,
+  attendanceNeeded,
   type Academics,
 } from "@/lib/game/academics";
 import { formatDuration, lagosDateLabel } from "@/lib/game/time";
@@ -110,7 +111,7 @@ export default function AcademicsPanel({
               </p>
             )}
             {a.modules.map((m) => {
-              const next = nextLectureStart(m.slots, nowMs);
+              const next = nextLectureStart(m.slots, nowMs, c?.daily_lectures);
               const live = m.live_lecture !== null;
               return (
                 <div key={m.code} className="rounded-2xl border border-white/10 bg-white/5 p-3">
@@ -128,14 +129,14 @@ export default function AcademicsPanel({
                     )}
                   </div>
                   <p className="mt-1 text-xs text-zinc-400">
-                    🗓 {m.slots.map((s) => slotLabel(s)).join(" · ")}
+                    🗓 {m.slots.map((s) => slotLabel(s, c?.daily_lectures)).join(" · ")}
                     {c?.phase === "lectures" && next && !live && ` · next in ${formatDuration(next - nowMs)}`}
                   </p>
                   <div className="mt-2 grid grid-cols-3 gap-2 text-[11px]">
                     <div>
                       <p className="text-zinc-500">Attendance</p>
                       <p className="font-bold">
-                        {m.attended}/{m.held}
+                        {m.attended}/{attendanceNeeded(m.held, c?.attendance_target_percent ?? 100)}
                       </p>
                     </div>
                     <div>
@@ -153,8 +154,9 @@ export default function AcademicsPanel({
               );
             })}
             <p className="text-[11px] text-zinc-500">
-              Lectures happen at the Faculty Block (you can join up to 2 hours after they start). Study at the
-              library or your hostel desk. Exams are written at the Faculty Block in exam week. Score = CA (attendance
+              Lectures happen at the Faculty Block{c?.daily_lectures ? ", twice a day for every course" : ""} (you can join up to 2
+              hours after they start). Attending {c?.attendance_target_percent ?? 100}% of the lectures held counts as full
+              attendance. Study at the library or your hostel desk. Exams are written at the Faculty Block when exams start. Score = CA (attendance
               + study, /30) + exam (/70). How tired or sick you are when you write affects the exam.
             </p>
           </div>
@@ -164,7 +166,7 @@ export default function AcademicsPanel({
           <div className="mt-4 space-y-3">
             {a.results.length === 0 && (
               <p className="rounded-xl bg-white/5 p-3 text-sm text-zinc-400">
-                No results yet. Results come out when exam week ends.
+                No results yet. Results come out when the exams end.
               </p>
             )}
             {a.results.map((r) => (

@@ -3,8 +3,8 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
 
 /**
- * Read-only game data the screen checks again and again (who is around, badges,
- * academics, chat messages).
+ * Game data the screen checks again and again (who is around, badges, academics,
+ * fees and rent, chat messages). Reading fees also creates a new semester's bills.
  *
  * These used to be Server Actions, but Next.js runs a player's Server Actions one at a
  * time, so every background check made the player's own taps wait in line. Plain GET
@@ -45,6 +45,10 @@ export async function GET(request: Request, { params }: { params: Promise<{ feed
       break;
     case "academics":
       fn = "get_academics";
+      args = { p_user_id: userId };
+      break;
+    case "bills":
+      fn = "get_bills";
       args = { p_user_id: userId };
       break;
     case "messages": {

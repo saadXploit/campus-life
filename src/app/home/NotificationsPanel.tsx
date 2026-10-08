@@ -14,6 +14,7 @@ const ICONS: Record<string, string> = {
   treat: "💚",
   purchase: "🛍️",
   ride: "🚗",
+  bill: "🧾",
   friend_request: "🤝",
   friend_accepted: "🤝",
   asked_out: "💘",

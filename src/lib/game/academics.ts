@@ -5,7 +5,7 @@ export type AcademicModule = {
   code: string;
   title: string;
   units: number;
-  /** Two weekly lectures: [ISO weekday 1=Mon..7=Sun, hour 0-23] in Lagos time. */
+  /** Two lecture times: [ISO weekday 1=Mon..7=Sun, hour 0-23] in Lagos time. With daily lectures the weekday is ignored. */
   slots: [number, number][];
   attended: number;
   held: number;
@@ -31,6 +31,13 @@ export type Academics = {
     semester_no: number;
     phase: "lectures" | "exams" | "holiday";
     week: number | null;
+    /** Day of the lecture period (1 = first day). */
+    day?: number | null;
+    lecture_days?: number;
+    /** Every course meets at its two times every day. */
+    daily_lectures?: boolean;
+    /** Share of the lectures held that counts as full attendance. */
+    attendance_target_percent?: number;
     lectures_end: string;
     exams_end: string;
     holiday_end: string;
@@ -50,22 +57,22 @@ export type Academics = {
 
 export const WEEKDAY_SHORT = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
-export function slotLabel([dow, hour]: [number, number]): string {
-  return `${WEEKDAY_SHORT[dow - 1]} ${formatClock(hour)}`;
+export function slotLabel([dow, hour]: [number, number], daily = false): string {
+  return `${daily ? "Daily" : WEEKDAY_SHORT[dow - 1]} ${formatClock(hour)}`;
 }
 
 const LAGOS = 60 * 60 * 1000;
 const WINDOW = 2 * 60 * 60 * 1000;
 
 /** The start of the next lecture of these slots that has not finished yet (ms), in Lagos time. */
-export function nextLectureStart(slots: [number, number][], nowMs: number): number | null {
+export function nextLectureStart(slots: [number, number][], nowMs: number, daily = false): number | null {
   const lagos = new Date(nowMs + LAGOS);
   const isoToday = lagos.getUTCDay() === 0 ? 7 : lagos.getUTCDay();
   let best: number | null = null;
   for (const [dow, hour] of slots) {
     for (let add = 0; add <= 7; add++) {
       const day = ((isoToday - 1 + add) % 7) + 1;
-      if (day !== dow) continue;
+      if (!daily && day !== dow) continue;
       const start =
         Date.UTC(lagos.getUTCFullYear(), lagos.getUTCMonth(), lagos.getUTCDate() + add, hour) - LAGOS;
       if (start + WINDOW > nowMs && (best === null || start < best)) best = start;
@@ -98,8 +105,10 @@ export function gradeColor(grade: string): string {
 export function phaseLabel(a: Academics): string {
   const c = a.calendar;
   if (a.strike) return "On strike";
-  if (c.phase === "lectures") return `Week ${c.week ?? 1} of lectures`;
-  if (c.phase === "exams") return "Exam week";
+  if (c.phase === "lectures") {
+    return c.day ? `Day ${c.day} of ${c.lecture_days ?? 10} · lectures` : `Week ${c.week ?? 1} of lectures`;
+  }
+  if (c.phase === "exams") return "Exams";
   return "Holiday";
 }
 
@@ -139,4 +148,10 @@ export function lecturerFor(code: string): {
       outfit: [5, 1, 3][(h >>> 14) % 3],
     },
   };
+}
+
+/** Lectures you need to attend for full attendance marks, from those held so far. */
+export function attendanceNeeded(held: number, targetPercent = 100): number {
+  if (held <= 0) return 0;
+  return Math.max(1, Math.ceil((held * targetPercent) / 100));
 }

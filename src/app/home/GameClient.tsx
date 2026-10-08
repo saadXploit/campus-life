@@ -56,6 +56,8 @@ import { formatNaira } from "@/lib/money";
 import AcademicsPanel from "./AcademicsPanel";
 import AdCard from "./AdCard";
 import JobsPanel from "./JobsPanel";
+import FeesPanel from "./FeesPanel";
+import { unpaid, type Bills } from "@/lib/game/bills";
 import OutingSheet from "./OutingSheet";
 import DriveSheet from "./DriveSheet";
 import ShopPanel from "./ShopPanel";
@@ -173,6 +175,11 @@ function workActivity(slug: string, jobs: GameJob[]): GameActivity | null {
 }
 
 type Payslip = { pay: number; bonus: number; boss: string; line: string | null };
+
+/** The server's clock right now (outside the component, so rendering stays pure). */
+function serverNowMs(skewRef: RefObject<number>): number {
+  return Date.now() + skewRef.current;
+}
 
 /** Server time minus this device's time (only called from event handlers and effects). */
 function clockSkew(serverTime: string): number {
@@ -419,6 +426,9 @@ export default function GameClient({ game }: { game: GameState }) {
   // Shop items: what you wear and drive, the shop, driving and lifts.
   const [style, setStyle] = useState<Record<string, string>>(game.player.style ?? {});
   const [showShop, setShowShop] = useState(false);
+  // School fees and rent: checked with academics, and after paying.
+  const [bills, setBills] = useState<Bills | null>(null);
+  const [showFees, setShowFees] = useState(false);
   const [roomItems, setRoomItems] = useState<string[]>(game.player.room_items ?? []);
   const [showDrive, setShowDrive] = useState(false);
   const [ridePending, setRidePending] = useState(false);
@@ -467,8 +477,9 @@ export default function GameClient({ game }: { game: GameState }) {
   useEffect(() => {
     let live = true;
     const load = () =>
-      fetchFeed<Academics>("academics").then((a) => {
+      Promise.all([fetchFeed<Academics>("academics"), fetchFeed<Bills>("bills")]).then(([a, b]) => {
         if (live && a) setAcademics(a);
+        if (live && b) setBills(b);
       });
     const first = setTimeout(load, 200);
     const timer = setInterval(load, 120_000);
@@ -527,6 +538,16 @@ export default function GameClient({ game }: { game: GameState }) {
     setDyn(d);
     setNow(Date.parse(d.server_time));
     return true;
+  }
+
+  /**
+   * Shows the result of a tap straight away, before the server answers. The server's
+   * answer then replaces it; if the server says no, call the returned function to undo.
+   */
+  function optimistic(patch: (st: GameDynamic["state"]) => Partial<GameDynamic["state"]>): () => void {
+    const before = dyn;
+    setDyn((d) => ({ ...d, state: { ...d.state, ...patch(d.state) } }));
+    return () => setDyn(before);
   }
 
   // ---------- Bubbles, poses and the activity log ----------
@@ -839,30 +860,49 @@ export default function GameClient({ game }: { game: GameState }) {
     }
     setError(null);
     setEntering(true);
+    // Walk in straight away; the server confirms (or sends you back out).
+    const undo = optimistic(() => ({ location_kind: kind }));
+    setFeed([]);
+    if (hasInterior(kind)) {
+      setInside(kind);
+      setPanelOpen(false);
+    }
     startTransition(async () => {
       const result = await travelAction(zonePlace.id);
       const ok = apply(result);
       setEntering(false);
-      if (ok && (result.dynamic as { curfew_fine?: boolean } | undefined)?.curfew_fine) {
-        setToast(["🚧 Curfew! You paid a gate fine"]);
+      if (!ok) {
+        undo();
+        setInside(null);
+        setPanelOpen(true);
+        return;
       }
-      if (ok) {
-        setFeed([]);
-        if (hasInterior(kind)) {
-          setInside(kind);
-          setPanelOpen(false);
-        }
+      if ((result.dynamic as { curfew_fine?: boolean } | undefined)?.curfew_fine) {
+        setToast(["🚧 Curfew! You paid a gate fine"]);
       }
     });
   }
 
   function doActivity(a: GameActivity) {
     setError(null);
-    setPending(a.slug);
+    const t = serverNowMs(skewRef);
+    const undo = optimistic((st) =>
+      a.ends_day
+        ? { asleep_since: new Date(t).toISOString(), busy_until: null, busy_activity: null }
+        : {
+            busy_until: new Date(t + Number(a.duration_minutes) * 60_000).toISOString(),
+            busy_activity: a.slug,
+            energy: Math.max(0, Math.min(100, st.energy + a.energy_delta)),
+          }
+    );
+    setNow(t);
     startTransition(async () => {
       const ok = apply(await performActivityAction(a.slug));
-      setPending(null);
-      if (!ok || a.ends_day) return;
+      if (!ok) {
+        undo();
+        return;
+      }
+      if (a.ends_day) return;
       const parts: string[] = [];
       if (a.energy_delta) parts.push(`⚡ ${signed(a.energy_delta)}`);
       if (a.health_delta) parts.push(`❤️ ${signed(a.health_delta)}`);
@@ -1001,12 +1041,22 @@ export default function GameClient({ game }: { game: GameState }) {
     setError(null);
     setJobPending(true);
     setShowJobs(false);
-    setPending(`work:${myJob.slug}`);
+    const t = serverNowMs(skewRef);
+    const job = myJob;
+    const undo = optimistic((st) => ({
+      busy_until: new Date(t + job.shift_minutes * 60_000).toISOString(),
+      busy_activity: `work:${job.slug}`,
+      energy: Math.max(0, st.energy - job.energy_cost),
+    }));
+    setNow(t);
     startTransition(async () => {
       const ok = apply(await startShiftAction());
       setJobPending(false);
-      setPending(null);
-      if (ok) setToast([`💼 Shift started · ⚡ -${myJob.energy_cost}`]);
+      if (!ok) {
+        undo();
+        return;
+      }
+      setToast([`💼 Shift started · ⚡ -${job.energy_cost}`]);
     });
   }
 
@@ -1023,10 +1073,14 @@ export default function GameClient({ game }: { game: GameState }) {
   function stopNow() {
     setError(null);
     setStopping(true);
+    const undo = optimistic(() => ({ busy_until: null, busy_activity: null }));
     startTransition(async () => {
       const result = await stopActivityAction();
       setStopping(false);
-      if (!apply(result)) return;
+      if (!apply(result)) {
+        undo();
+        return;
+      }
       const stopped = (result.dynamic as { stopped?: string } | undefined)?.stopped ?? "";
       // Work shows the payslip instead.
       if (!stopped.startsWith("work:")) setToast(["✋ Stopped"]);
@@ -1037,9 +1091,11 @@ export default function GameClient({ game }: { game: GameState }) {
     setError(null);
     setWaking(true);
     const before = s.energy;
+    const undo = optimistic(() => ({ asleep_since: null }));
     startTransition(async () => {
       const result = await wakeUpAction();
       setWaking(false);
+      if (!result.dynamic) undo();
       if (apply(result) && result.dynamic) {
         const gained = result.dynamic.state.energy - before;
         setToast([gained > 0 ? `Good morning! ⚡ +${gained}` : "Good morning!"]);
@@ -1228,7 +1284,7 @@ export default function GameClient({ game }: { game: GameState }) {
 
   const nextOfMine = academics
     ? academics.modules
-        .map((m) => ({ m, at: nextLectureStart(m.slots, now) }))
+        .map((m) => ({ m, at: nextLectureStart(m.slots, now, academics.calendar.daily_lectures) }))
         .filter((x): x is { m: (typeof academics.modules)[number]; at: number } => x.at !== null && !x.m.live_lecture)
         .sort((a, b) => a.at - b.at)[0]
     : undefined;
@@ -1248,7 +1304,7 @@ export default function GameClient({ game }: { game: GameState }) {
               <p className="text-xs text-zinc-300">
                 No lecture of yours right now.
                 {nextOfMine &&
-                  ` Next: ${nextOfMine.m.code} ${slotLabel(nextOfMine.m.slots.find((sl) => nextLectureStart([sl], now) === nextOfMine.at) ?? nextOfMine.m.slots[0])} (in ${formatDuration(nextOfMine.at - now)})`}
+                  ` Next: ${nextOfMine.m.code} ${slotLabel(nextOfMine.m.slots.find((sl) => nextLectureStart([sl], now, academics.calendar.daily_lectures) === nextOfMine.at) ?? nextOfMine.m.slots[0], academics.calendar.daily_lectures)} (in ${formatDuration(nextOfMine.at - now)})`}
               </p>
             ) : (
               academics.modules
@@ -1270,7 +1326,7 @@ export default function GameClient({ game }: { game: GameState }) {
         {roomKind === "faculty" && phase === "exams" && (
           <div className="mt-2 flex flex-wrap gap-2">
             {academics.modules.filter((m) => !m.exam_written).length === 0 ? (
-              <p className="text-xs text-zinc-300">All exams written. Results come out when exam week ends.</p>
+              <p className="text-xs text-zinc-300">All exams written. Results come out when the exams end.</p>
             ) : (
               academics.modules
                 .filter((m) => !m.exam_written)
@@ -1597,6 +1653,19 @@ export default function GameClient({ game }: { game: GameState }) {
               {academics.cgpa !== null && ` · CGPA ${Number(academics.cgpa).toFixed(2)}`}
             </button>
           )}
+          {unpaid(bills).length > 0 && (
+            <button
+              type="button"
+              onClick={() => setShowFees(true)}
+              className={
+                "pointer-events-auto text-left text-[11px] font-bold " +
+                (unpaid(bills).some((u) => Date.parse(u.bill.due_at) < now) ? "text-red-300" : "text-amber-300")
+              }
+            >
+              🧾 {unpaid(bills).some((u) => Date.parse(u.bill.due_at) < now) ? "Overdue" : "Due"}:{" "}
+              {formatNaira(unpaid(bills).reduce((sum, u) => sum + u.total, 0))}
+            </button>
+          )}
           {myJob && dyn.job && (
             <button
               type="button"
@@ -1645,6 +1714,17 @@ export default function GameClient({ game }: { game: GameState }) {
                 className="block w-full rounded-xl px-3 py-2 text-left hover:bg-white/10"
               >
                 💼 Jobs
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setMenu(false);
+                  setShowFees(true);
+                  void fetchFeed<Bills>("bills").then((b) => b && setBills(b));
+                }}
+                className="block w-full rounded-xl px-3 py-2 text-left hover:bg-white/10"
+              >
+                🧾 Fees & rent
               </button>
               <button
                 type="button"
@@ -2075,6 +2155,17 @@ export default function GameClient({ game }: { game: GameState }) {
           </div>
         );
       })()}
+
+      {showFees && (
+        <FeesPanel
+          bills={bills}
+          balance={dyn.balance_kobo}
+          nowMs={now}
+          onBills={setBills}
+          onDynamic={(d) => apply({ dynamic: d })}
+          onClose={() => setShowFees(false)}
+        />
+      )}
 
       {showShop && (
         <ShopPanel

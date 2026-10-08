@@ -36,6 +36,10 @@ A multiplayer university life-simulation game. Next.js (App Router) + TypeScript
 
 - Stage 14 (ready to publish): cars, bicycles, scooters and okada are off the shop for now (switched off, not deleted; game money refunded to car owners). Privacy policy and terms pages.
 
+- Stage 15 (fees and rent): school fees and rent every semester (the admission semester is covered), due two weeks in, 10% late fee; unpaid fees block exams and unpaid rent halves sleep energy; four room types with different rents and sleep bonuses. Taps now show their result instantly while the server confirms, and background checks no longer delay taps.
+
+- Stage 16 (short semesters): a semester is 2 weeks (10 days of lectures, 2 of exams, 2 of holiday); every course meets twice a day; attending half of the lectures held counts as full attendance; fees are due 5 days in. The running semester keeps its start date.
+
 The long-term goal is an explorable 3D multiplayer campus. All game rules live in the database (Postgres functions), so the 3D client can be added without rewriting them.
 
 ## How the game stays fair
@@ -43,17 +47,18 @@ The long-term goal is an explorable 3D multiplayer campus. All game rules live i
 - Every game action runs as a Postgres function that only the server can call. The browser can read its own data but never write.
 - Money is stored in kobo (whole numbers). Every balance change goes through one function, wallet_apply, which also writes the ledger line. Balances can never go below zero.
 
-## Publishing (going live)
+## Publishing (going live): Netlify + Supabase + X and Google sign-in
 
-1. Put the code on GitHub (a private repository is fine).
-2. Create a project on a host such as Vercel and import the repository. Next.js is detected automatically.
-3. In the host's Environment Variables, add every value from .env.local, with NEXT_PUBLIC_SITE_URL set to the real address (for example https://campuslife.ng). Also set NEXT_PUBLIC_CONTACT_EMAIL. Never commit .env.local.
-4. Supabase dashboard, Authentication, URL Configuration: set Site URL to the real address, and add https://YOUR-SITE/auth/callback and https://YOUR-SITE/admin/callback to Redirect URLs.
-5. Google Cloud console, OAuth consent screen: add the privacy (/privacy) and terms (/terms) links and your domain, then publish the app (switch from Testing to In production) so anyone can sign in.
-6. X developer portal: add the real website address. The callback URL stays the Supabase one.
-7. Make sure every SQL file in supabase/migrations has been run, in order, on the Supabase project the live site uses.
-8. Sign in once with the owner's X account (OWNER_X_USER_ID) and open /admin to check staff access.
-9. When Paystack is approved: add PAYSTACK_SECRET_KEY on the host, set the webhook to https://YOUR-SITE/api/paystack/webhook, and switch the shop to real money in Admin, Game settings.
+1. Put the code on GitHub (a private repository is fine). Never commit .env.local.
+2. Netlify: Add new site, Import an existing project, pick the repository. Netlify detects Next.js and sets the build command (npm run build) itself.
+3. Netlify, Site configuration, Environment variables: add every value from .env.local. Set NEXT_PUBLIC_SITE_URL to the real address (for example https://campuslife.netlify.app or your own domain) and set NEXT_PUBLIC_CONTACT_EMAIL. Then deploy.
+4. Speed: Netlify, Site configuration, Functions, Region: if your plan lets you choose, pick the region closest to your Supabase project's region (Supabase, Project Settings, General). The game server and the database then sit next to each other.
+5. Supabase, Authentication, URL Configuration: set Site URL to the real address, and add https://YOUR-SITE/auth/callback and https://YOUR-SITE/admin/callback to Redirect URLs.
+6. Google Cloud console, OAuth consent screen: add your domain and the links to /privacy and /terms, then switch the app from Testing to In production so anyone can sign in.
+7. X developer portal: add the real website address. The callback URL stays the Supabase one.
+8. Make sure every SQL file in supabase/migrations has been run, in order, on the Supabase project the live site uses.
+9. Sign in once with the owner's X account (OWNER_X_USER_ID) and open /admin to check staff access.
+10. When Paystack is approved: add PAYSTACK_SECRET_KEY in Netlify, set the webhook to https://YOUR-SITE/api/paystack/webhook, and switch the shop to real money in Admin, Game settings.
 
 ## Run it on your computer
 

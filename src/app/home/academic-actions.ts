@@ -16,6 +16,7 @@ const ERRORS: Record<string, string> = {
   strike: "Lecturers are on strike. No lectures today.",
   "not exam week": "Exams have not started yet.",
   "exam already written": "You already wrote that exam.",
+  "fees unpaid": "Pay your school fees first (menu: Fees & rent). Unpaid fees block exams.",
   "fully prepared": "You are fully prepared for that course.",
   holiday: "It is the holiday. Rest, the next semester is coming.",
   "too tired": "You are too tired. Eat or rest first.",
