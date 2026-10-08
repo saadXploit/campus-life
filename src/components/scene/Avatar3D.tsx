@@ -21,6 +21,11 @@ type Props = {
   shirtColor?: string;
   trouserColor?: string;
   capColor?: string | null;
+  /** Shop items: a flowing robe (agbada), shades, a chain and sneaker colour. */
+  robeColor?: string;
+  glassesColor?: string;
+  chainColor?: string;
+  shoeColor?: string;
 };
 
 const HIP_Y = 0.78;
@@ -46,6 +51,10 @@ export default function Avatar3D({
   shirtColor,
   trouserColor = "#1f2937",
   capColor = null,
+  robeColor,
+  glassesColor,
+  chainColor,
+  shoeColor = "#f5f5f4",
 }: Props) {
   const body = useRef<Group>(null);
   const head = useRef<Group>(null);
@@ -53,9 +62,11 @@ export default function Avatar3D({
   const armR = useRef<Group>(null);
   const legL = useRef<Group>(null);
   const legR = useRef<Group>(null);
+  const ball = useRef<Group>(null);
 
   const skinColor = SKIN_TONES[skin] ?? SKIN_TONES[0];
   const hair = HAIR_COLORS[hairColor] ?? HAIR_COLORS[0];
+  const eating = action === "eat" || action === "dine";
   const shirt = shirtColor ?? OUTFIT_COLORS[outfit] ?? OUTFIT_COLORS[0];
 
   useFrame((state, delta) => {
@@ -160,6 +171,39 @@ export default function Avatar3D({
         headX = Math.sin(t * 6) * 0.15;
         break;
       }
+      case "eat": {
+        // Standing, food in the left hand, the right hand going to the mouth.
+        const bite = Math.max(0, Math.sin(t * 2.4));
+        armLX = -1.0;
+        armLZ = 0.35;
+        armRX = -0.9 - bite * 1.5;
+        armRZ = -0.35 - bite * 0.15;
+        headX = 0.15 - bite * 0.15;
+        break;
+      }
+      case "dine": {
+        // Seated at a table, eating.
+        const bite = Math.max(0, Math.sin(t * 2.4));
+        bodyY = -0.33;
+        legLX = -1.45;
+        legRX = -1.45;
+        armLX = -0.9;
+        armRX = -0.9 - bite * 1.4;
+        armRZ = -0.25 - bite * 0.15;
+        headX = 0.3 - bite * 0.2;
+        break;
+      }
+      case "football": {
+        // Jogging with the ball and kicking it on.
+        const s = Math.sin(t * 8);
+        legLX = s * 0.7;
+        legRX = -s * 0.5 - Math.max(0, Math.sin(t * 4)) * 0.6;
+        armLX = -s * 0.6;
+        armRX = s * 0.6;
+        bodyY = Math.abs(Math.cos(t * 8)) * 0.07;
+        bodyTilt = 0.1;
+        break;
+      }
       case "sleep": {
         lie = -Math.PI / 2;
         bodyY = 0.28 + Math.sin(t * 1.2) * 0.01;
@@ -179,10 +223,24 @@ export default function Avatar3D({
     aR.rotation.z += (armRZ - aR.rotation.z) * k;
     lL.rotation.x += (legLX - lL.rotation.x) * k;
     lR.rotation.x += (legRX - lR.rotation.x) * k;
+    if (ball.current) {
+      // The ball rolls out in front of the feet and back.
+      const roll = Math.max(0, Math.sin(t * 4));
+      ball.current.position.set(0.12, 0.13 + Math.abs(Math.sin(t * 8)) * 0.05, 0.35 + roll * 0.45);
+      ball.current.rotation.x = t * 9;
+    }
   });
 
   return (
     <group position={position} rotation={[0, rotationY, 0]}>
+      {action === "football" && (
+        <group ref={ball}>
+          <mesh castShadow>
+            <icosahedronGeometry args={[0.13, 1]} />
+            <meshStandardMaterial color="#f8fafc" roughness={0.5} flatShading />
+          </mesh>
+        </group>
+      )}
       <group ref={body}>
         {/* legs: trousers and shoes, pivoting at the hip */}
         {[
@@ -196,7 +254,7 @@ export default function Avatar3D({
             </mesh>
             <mesh position={[0, -0.74, 0.05]} castShadow>
               <boxGeometry args={[0.17, 0.09, 0.3]} />
-              <meshStandardMaterial color="#f5f5f4" roughness={0.6} />
+              <meshStandardMaterial color={shoeColor} roughness={0.6} />
             </mesh>
           </group>
         ))}
@@ -210,6 +268,18 @@ export default function Avatar3D({
           <cylinderGeometry args={[0.07, 0.08, 0.12, 10]} />
           <meshStandardMaterial color={skinColor} roughness={0.7} />
         </mesh>
+        {robeColor && (
+          <mesh position={[0, 0.88, 0]} castShadow>
+            <cylinderGeometry args={[0.34, 0.52, 1.0, 14, 1, true]} />
+            <meshStandardMaterial color={robeColor} roughness={0.8} side={2} />
+          </mesh>
+        )}
+        {chainColor && (
+          <mesh position={[0, 1.37, 0.06]} rotation={[Math.PI / 2 - 0.35, 0, 0]}>
+            <torusGeometry args={[0.16, 0.018, 6, 20]} />
+            <meshStandardMaterial color={chainColor} metalness={0.9} roughness={0.25} />
+          </mesh>
+        )}
 
         {/* arms: sleeve, forearm and hand, pivoting at the shoulder */}
         {[
@@ -229,6 +299,25 @@ export default function Avatar3D({
               <sphereGeometry args={[0.07, 10, 8]} />
               <meshStandardMaterial color={skinColor} roughness={0.7} />
             </mesh>
+            {/* eating: a plate of food in the left hand, a spoonful in the right */}
+            {eating && x < 0 && (
+              <group position={[0, -0.66, 0.06]}>
+                <mesh>
+                  <cylinderGeometry args={[0.16, 0.13, 0.03, 16]} />
+                  <meshStandardMaterial color="#f8fafc" roughness={0.4} />
+                </mesh>
+                <mesh position={[0, 0.03, 0]}>
+                  <sphereGeometry args={[0.1, 10, 6, 0, Math.PI * 2, 0, Math.PI / 2]} />
+                  <meshStandardMaterial color="#ea580c" roughness={0.9} />
+                </mesh>
+              </group>
+            )}
+            {eating && x > 0 && (
+              <mesh position={[0, -0.66, 0.05]}>
+                <sphereGeometry args={[0.045, 8, 6]} />
+                <meshStandardMaterial color="#f59e0b" roughness={0.9} />
+              </mesh>
+            )}
           </group>
         ))}
 
@@ -294,6 +383,12 @@ export default function Avatar3D({
             </>
           )}
           {hairStyle === 5 && <Cap r={0.228} tilt={-0.95} color={hair} />}
+          {glassesColor && (
+            <mesh position={[0, 0.04, 0.2]}>
+              <boxGeometry args={[0.34, 0.08, 0.04]} />
+              <meshStandardMaterial color={glassesColor} roughness={0.2} metalness={0.4} />
+            </mesh>
+          )}
           {capColor && (
             <group position={[0, 0.12, 0]}>
               <mesh castShadow>

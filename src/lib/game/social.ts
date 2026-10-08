@@ -78,6 +78,33 @@ export type SocialBadges = {
   dating_asks: number;
   friend_ids: string[];
   pending_ids: string[];
+  /** Invitations from friends to eat, play or hang out together. */
+  outings?: OutingInvite[];
+  /** Friends offering you a lift in their car. */
+  rides?: RideOffer[];
+};
+
+export type RideOffer = {
+  id: string;
+  driver_id: string;
+  driver: string;
+  car: string;
+  place: string;
+  place_kind: string;
+  expires_at: string;
+};
+
+export type OutingInvite = {
+  id: string;
+  host_id: string;
+  host: string;
+  activity: string;
+  activity_slug: string;
+  cost_kobo: number;
+  place: string;
+  place_kind: string;
+  host_pays: boolean;
+  expires_at: string;
 };
 
 /** "online", "5m ago", "3h ago", "2d ago". */

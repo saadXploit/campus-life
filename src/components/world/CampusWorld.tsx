@@ -7,8 +7,10 @@ import Avatar3D, { type AvatarAction } from "@/components/scene/Avatar3D";
 import { lightingFor } from "@/lib/game/lighting";
 import type { GameAd } from "@/lib/game/gameTypes";
 import { PLAYER_RADIUS, ZONE_RADIUS, resolveCollision, type Box } from "@/lib/game/worldLayout";
+import type { Appearance } from "@/lib/game/shop";
 import type { StaffMember } from "@/lib/game/staff";
-import { Bubble, NameTag, OtherPlayer, StaffNpc, type PlacedStaff, type ShownPerson } from "./People";
+import type { PlayerCar } from "./Roads";
+import { Bubble, NameTag, OtherPlayer, StaffNpc, appearanceProps, type PlacedStaff, type ShownPerson } from "./People";
 import { CampusBase, useCampusLayout, type Placed, type WorldLocation } from "./Scenery";
 
 export type { WorldLocation };
@@ -44,6 +46,10 @@ type Props = {
   staff: StaffMember[];
   staffBubbles: Record<string, string>;
   onSelectStaff: (id: string) => void;
+  /** What you bought and wear. */
+  appearance?: Appearance;
+  /** Your car and the cars of people you can see, parked by the main gate. */
+  playerCars?: PlayerCar[];
 };
 
 /** Spots beside each door for staff: right, left, far right, far left. */
@@ -98,7 +104,12 @@ function Player({
   sunIntensity,
   bubble,
   onZoneChange,
+  stage,
+  appearance,
 }: {
+  appearance?: Appearance;
+  /** While playing sport: the spot on the pitch to run to (and around, for football). */
+  stage: { x: number; z: number } | null;
   avatar: WorldAvatar;
   name: string;
   spawn: { x: number; z: number };
@@ -157,7 +168,7 @@ function Player({
     };
   }, []);
 
-  useFrame(({ camera }, rawDelta) => {
+  useFrame(({ camera, clock }, rawDelta) => {
     const delta = Math.min(rawDelta, 0.05);
     const p = pos.current;
     const k = keys.current;
@@ -183,6 +194,21 @@ function Player({
       }
     } else {
       targetRef.current = null;
+      if (stage) {
+        // Playing on the pitch: jog there, then (for football) keep running around with the ball.
+        const t = clock.elapsedTime;
+        const goal =
+          action === "football"
+            ? { x: stage.x + Math.sin(t * 0.8) * 3, z: stage.z + Math.cos(t * 0.8) * 1.8 }
+            : stage;
+        const tx = goal.x - p.x;
+        const tz = goal.z - p.z;
+        const d = Math.hypot(tx, tz);
+        if (d > 0.25) {
+          dx = tx / d;
+          dz = tz / d;
+        }
+      }
     }
 
     const isMoving = dx !== 0 || dz !== 0;
@@ -276,9 +302,10 @@ function Player({
           hairStyle={avatar.hairStyle}
           hairColor={avatar.hairColor}
           outfit={avatar.outfit}
-          action={action ?? (moving ? "walk" : "idle")}
+          action={action === "exercise" && moving ? "walk" : (action ?? (moving ? "walk" : "idle"))}
+          {...appearanceProps(appearance)}
         />
-        <NameTag name={name} />
+        <NameTag name={name} shine={appearance?.tag} />
         {bubble && <Bubble text={bubble} />}
       </group>
       <mesh ref={marker} rotation={[-Math.PI / 2, 0, 0]} visible={false}>
@@ -313,6 +340,8 @@ export default function CampusWorld({
   staff,
   staffBubbles,
   onSelectStaff,
+  appearance,
+  playerCars = [],
 }: Props) {
   const targetRef = useRef<{ x: number; z: number } | null>(null);
   const [activeZone, setActiveZone] = useState<string | null>(null);
@@ -329,9 +358,17 @@ export default function CampusWorld({
   const shown: ShownPerson[] = useMemo(() => {
     const counts = new Map<string, number>();
     const out: ShownPerson[] = [];
+    let onPitch = 0;
     for (const m of crowd) {
       const place = placed.find((p) => p.kind === m.kind);
       if (!place) continue;
+      if (m.kind === "sports" && (m.pose === "football" || m.pose === "exercise")) {
+        const i = onPitch++;
+        const x = place.x + 2 + (i % 5) * 2.6 - 5;
+        const z = place.z - 3 + Math.floor(i / 5) * 2.4;
+        out.push({ ...m, x, y: 0, z, heading: (i % 2 ? 1 : -1) * Math.PI * 0.5 });
+        continue;
+      }
       const i = counts.get(m.kind) ?? 0;
       counts.set(m.kind, i + 1);
       const a = -1.3 + (i % 7) * 0.43;
@@ -361,6 +398,11 @@ export default function CampusWorld({
     }
     return out;
   }, [staff, placed]);
+
+  // Sport is played on the pitch, not at its entrance.
+  const field = placed.find((p) => p.kind === "sports") ?? null;
+  const sporting = action === "football" || action === "exercise";
+  const stage = field && sporting && spawnKind === "sports" ? { x: field.x - 4, z: field.z + 1 } : null;
 
   const spawnPlace = placed.find((p) => p.kind === spawnKind) ?? placed[0];
   const spawn = spawnPlace ? spawnPlace.entrance : { x: 0, z: 0 };
@@ -399,6 +441,7 @@ export default function CampusWorld({
         onSelectBuilding={walkToBuilding}
         onSelectAd={onSelectAd}
         myFaculty={myFaculty}
+        playerCars={playerCars}
       />
       {placed.map((p) => (
         <Zone key={p.id} x={p.entrance.x} z={p.entrance.z} active={activeZone === p.kind} />
@@ -416,6 +459,8 @@ export default function CampusWorld({
         name={playerName}
         spawn={spawn}
         spawnKey={spawnKey}
+        stage={stage}
+        appearance={appearance}
         obstacles={obstacles}
         zones={zones}
         locked={action !== null}

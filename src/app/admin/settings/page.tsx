@@ -21,6 +21,7 @@ export default async function SettingsPage({
   const { data } = await admin.from("app_config").select("key, value");
   const cfg = new Map((data ?? []).map((r) => [r.key as string, r.value as unknown]));
   const registrationOpen = cfg.get("registration_open") !== false;
+  const shopOpen = cfg.get("shop_open") !== false;
 
   const field =
     "mt-1 w-full rounded-xl border border-white/15 bg-white/5 px-3 py-3 text-sm text-white outline-none focus:border-red-400";
@@ -58,6 +59,17 @@ export default async function SettingsPage({
             <select name="registration_open" defaultValue={String(registrationOpen)} className={field}>
               <option value="true">Open</option>
               <option value="false">Paused</option>
+            </select>
+          </section>
+
+          <section className="rounded-2xl border border-white/10 bg-white/5 p-5">
+            <h2 className="text-lg font-bold">Shop (real money, Paystack)</h2>
+            <p className="mt-1 text-sm text-zinc-400">
+              Closing the shop stops new purchases at once. Items already bought stay with their owners.
+            </p>
+            <select name="shop_open" defaultValue={String(shopOpen)} className={field}>
+              <option value="true">Open</option>
+              <option value="false">Closed</option>
             </select>
           </section>
 

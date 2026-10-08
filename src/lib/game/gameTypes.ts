@@ -1,6 +1,7 @@
 /** Shapes returned by the game database functions (get_game_state and the actions). */
 
 import type { GameJob, PlayerJob } from "./jobs";
+import type { ItemInfo } from "./shop";
 
 export type GameLocation = {
   id: string;
@@ -70,6 +71,8 @@ export type Person = {
   asleep: boolean;
   activity: string | null;
   bond: number;
+  /** Shop items they wear and drive (slot to item slug). */
+  style?: Record<string, string>;
 };
 
 /** Something that happened where you are: a chat line or an interaction. */
@@ -126,6 +129,10 @@ export type GameState = GameDynamic & {
     hair_style: number;
     hair_color: number;
     outfit: number;
+    /** Shop items you wear and drive (slot to item slug). */
+    style?: Record<string, string>;
+    /** Hostel room upgrades you own ("ac", "speaker"...). */
+    room_items?: string[];
   };
   enrollment: {
     level_year: number;
@@ -141,6 +148,8 @@ export type GameState = GameDynamic & {
   interactions: GameInteraction[];
   /** Jobs on campus (each boss is a staff character). */
   jobs?: GameJob[];
+  /** How every wearable shop item and car looks. */
+  items?: ItemInfo[];
   ads: GameAd[];
 };
 

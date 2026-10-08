@@ -84,6 +84,14 @@ export default async function AdminHomePage() {
               </span>
             </Link>
           )}
+          {can(role, "economy.inject") && (
+            <Link href="/admin/purchases" className={card}>
+              Shop purchases
+              <span className="block text-sm font-normal text-zinc-400">
+                Real-money orders paid through Paystack
+              </span>
+            </Link>
+          )}
         </div>
 
         <p className="mt-6 text-sm text-zinc-500">

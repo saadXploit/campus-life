@@ -56,6 +56,13 @@ import { formatNaira } from "@/lib/money";
 import AcademicsPanel from "./AcademicsPanel";
 import AdCard from "./AdCard";
 import JobsPanel from "./JobsPanel";
+import OutingSheet from "./OutingSheet";
+import DriveSheet from "./DriveSheet";
+import ShopPanel from "./ShopPanel";
+import { driveAction, respondRideAction } from "./ride-actions";
+import { appearanceOf, carOf } from "@/lib/game/shop";
+import type { PlayerCar } from "@/components/world/Roads";
+import { createOutingAction, respondOutingAction } from "./outing-actions";
 import SocialPanel, { type SocialStart } from "./SocialPanel";
 import NotificationsPanel from "./NotificationsPanel";
 import PlayerCard from "./PlayerCard";
@@ -63,6 +70,7 @@ import WalletPanel from "./WalletPanel";
 import {
   performActivityAction,
   refreshGameAction,
+  stopActivityAction,
   travelAction,
   wakeUpAction,
   type ActionResult,
@@ -106,8 +114,13 @@ const SLEEP_ENERGY_PER_HOUR = 17;
 const POLL_AWAKE = 6;
 const POLL_ASLEEP = 20;
 
+/** Food you are seen eating (seated indoors, standing at the market). */
+const EATING = new Set(["cafeteria_meal", "street_food", "snacks", "bread_and_tea"]);
+
 /** Which body animation an activity plays. */
 function animationFor(a: GameActivity): AvatarAction {
+  if (EATING.has(a.slug)) return "eat";
+  if (a.slug === "pickup_football") return "football";
   if (workBusy(a.slug)) {
     if (a.location_kind === "sports") return "exercise";
     return a.location_kind === "faculty" ? "talk" : "busy";
@@ -214,6 +227,9 @@ function BusyBar({
   totalMs,
   skewRef,
   onDone,
+  onStop,
+  warning,
+  stopping,
 }: {
   label: string;
   untilMs: number;
@@ -221,8 +237,14 @@ function BusyBar({
   skewRef: RefObject<number>;
   /** Called with the current server time when the countdown reaches zero. */
   onDone: (nowMs: number) => void;
+  /** Leave the activity now. */
+  onStop: () => void;
+  /** What leaving early costs, shown before stopping (null: stop straight away). */
+  warning: string | null;
+  stopping: boolean;
 }) {
   const [left, setLeft] = useState(totalMs);
+  const [armed, setArmed] = useState(false);
   useEffect(() => {
     const tick = () => {
       const nowMs = Date.now() + skewRef.current;
@@ -246,8 +268,26 @@ function BusyBar({
         <div className="h-full bg-amber-400 transition-[width] duration-500" style={{ width: `${done * 100}%` }} />
       </div>
       <p className="mt-1 text-xs text-zinc-300">{formatDuration(left)} left</p>
+      {armed && warning && <p className="mt-2 text-[11px] text-amber-200">{warning}</p>}
+      <button
+        type="button"
+        onClick={() => (warning && !armed ? setArmed(true) : onStop())}
+        disabled={stopping}
+        className="pointer-events-auto mt-2 rounded-xl border border-white/25 px-4 py-1.5 text-xs font-bold disabled:opacity-40"
+      >
+        {stopping ? "Stopping..." : armed ? "Yes, stop now" : "✋ Stop"}
+      </button>
     </div>
   );
+}
+
+/** What leaving early costs, so players can decide. */
+function stopWarning(slug: string): string | null {
+  if (slug.startsWith("work:")) return "You'll only be paid for the time you worked, with no bonus.";
+  if (slug.startsWith("lecture:")) return "The lecture won't count as attended.";
+  if (slug.startsWith("exam:")) return "Walking out cuts your exam mark.";
+  if (slug.startsWith("study:")) return "This study session won't count.";
+  return null;
 }
 
 /** Asleep: time passes for real and energy comes back. */
@@ -315,6 +355,7 @@ type FeedLine = { id: number; text: string };
 export default function GameClient({ game }: { game: GameState }) {
   const { locations, activities, interactions, enrollment, ads } = game;
   const jobs = useMemo(() => game.jobs ?? [], [game.jobs]);
+  const itemLooks = useMemo(() => game.items ?? [], [game.items]);
   const me = game.player.id;
   const university = enrollment.university;
   const [, startTransition] = useTransition();
@@ -368,6 +409,19 @@ export default function GameClient({ game }: { game: GameState }) {
   const lastPayId = useRef(game.job?.last_pay?.id ?? 0);
   const paidCheck = useRef<string | null>(null);
   const [staffSelected, setStaffSelected] = useState<string | null>(null);
+  const [stopping, setStopping] = useState(false);
+
+  // Outings: inviting friends to do something together, and answering invitations.
+  const [outingFor, setOutingFor] = useState<GameActivity | null>(null);
+  const [outingPending, setOutingPending] = useState(false);
+  const [dismissedInvites, setDismissedInvites] = useState<string[]>([]);
+
+  // Shop items: what you wear and drive, the shop, driving and lifts.
+  const [style, setStyle] = useState<Record<string, string>>(game.player.style ?? {});
+  const [showShop, setShowShop] = useState(false);
+  const [showDrive, setShowDrive] = useState(false);
+  const [ridePending, setRidePending] = useState(false);
+  const [dismissedRides, setDismissedRides] = useState<string[]>([]);
 
   // Friends, chats and dating: small badge counts polled every 20 seconds.
   const [badges, setBadges] = useState<SocialBadges | null>(null);
@@ -619,7 +673,8 @@ export default function GameClient({ game }: { game: GameState }) {
     if (p.asleep) return "sleep";
     if (p.activity && workBusy(p.activity)) return slotPose === "sit" ? "sit" : "busy";
     const act = p.activity ? activities.find((a) => a.slug === p.activity) : null;
-    if (act) return slotPose === "sit" ? "sit" : animationFor(act);
+    if (act && slotPose === "sit") return EATING.has(act.slug) ? "dine" : "sit";
+    if (act) return animationFor(act);
     return slotPose ?? "idle";
   }
 
@@ -641,6 +696,7 @@ export default function GameClient({ game }: { game: GameState }) {
       pose: poseOf(p, null),
       bubble: effects[p.id]?.bubble ?? null,
       friend: p.bond >= 40,
+      appearance: appearanceOf(p.style, itemLooks),
     }));
 
   // In a room: everyone here gets a spot (sleeping roommates get the other bunks).
@@ -662,6 +718,7 @@ export default function GameClient({ game }: { game: GameState }) {
           pose: poseOf(p, spot.pose),
           bubble: effects[p.id]?.bubble ?? null,
           friend: p.bond >= 40,
+          appearance: appearanceOf(p.style, itemLooks),
         };
       })
     : [];
@@ -687,6 +744,20 @@ export default function GameClient({ game }: { game: GameState }) {
     ? { [staffMember.id]: staffLine(staffMember, now) }
     : {};
   const placeName = (kind: string) => locations.find((l) => l.kind === kind)?.name ?? kind;
+
+  const rideOffer =
+    (badges?.rides ?? []).find((r) => !dismissedRides.includes(r.id) && Date.parse(r.expires_at) > now) ?? null;
+
+  const myAppearance = appearanceOf(style, itemLooks);
+  const myCar = carOf(style, itemLooks);
+  const parkedCars: PlayerCar[] = [];
+  if (myCar) parkedCars.push({ id: me, owner: game.player.name, color: myCar.look.color ?? "#e5e7eb", model: myCar.look.model ?? "sedan" });
+  for (const p of people) {
+    const car = carOf(p.style, itemLooks);
+    if (car && parkedCars.length < 10) {
+      parkedCars.push({ id: p.id, owner: p.name, color: car.look.color ?? "#e5e7eb", model: car.look.model ?? "sedan" });
+    }
+  }
 
   const selectedPerson = people.find((p) => p.id === selected) ?? null;
   const placeInteractions: GameInteraction[] = interactions.filter((i) =>
@@ -800,6 +871,109 @@ export default function GameClient({ game }: { game: GameState }) {
     });
   }
 
+  function startOuting(a: GameActivity, friendIds: string[], hostPays: boolean) {
+    setError(null);
+    setOutingPending(true);
+    setPending(a.slug);
+    startTransition(async () => {
+      const r = await createOutingAction(a.slug, friendIds, hostPays);
+      setOutingPending(false);
+      setPending(null);
+      if (!r.dynamic) {
+        setError(r.error ?? "The invitation was not sent.");
+        return;
+      }
+      apply({ dynamic: r.dynamic });
+      setOutingFor(null);
+      setToast([`👥 Invited ${friendIds.length} ${friendIds.length === 1 ? "friend" : "friends"}`]);
+    });
+  }
+
+  function answerInvite(id: string, accept: boolean) {
+    setError(null);
+    setDismissedInvites((d) => [...d, id]);
+    if (!accept) {
+      startTransition(async () => {
+        await respondOutingAction(id, false);
+        refreshBadges();
+      });
+      return;
+    }
+    setOutingPending(true);
+    startTransition(async () => {
+      const r = await respondOutingAction(id, true);
+      setOutingPending(false);
+      refreshBadges();
+      if (!r.dynamic) {
+        setError(r.error ?? "Could not join.");
+        return;
+      }
+      apply({ dynamic: r.dynamic });
+      setFeed([]);
+      lastEventId.current = 0;
+      handled.current.clear();
+      const kind = r.dynamic.outing_kind ?? null;
+      if (kind && hasInterior(kind)) {
+        setInside(kind);
+        setPanelOpen(false);
+      } else {
+        setInside(null);
+      }
+      setToast([r.dynamic.paid_by_host ? "💚 Your friend paid for you" : "👥 You joined your friend"]);
+    });
+  }
+
+  function arriveAt(kind: string | null) {
+    setFeed([]);
+    lastEventId.current = 0;
+    handled.current.clear();
+    if (kind && hasInterior(kind)) {
+      setInside(kind);
+      setPanelOpen(false);
+    } else {
+      setInside(null);
+    }
+  }
+
+  function drive(to: { id: string; kind: string; name: string }, friendIds: string[]) {
+    setError(null);
+    setRidePending(true);
+    startTransition(async () => {
+      const r = await driveAction(to.id, friendIds);
+      setRidePending(false);
+      if (!r.dynamic) {
+        setError(r.error ?? "Could not drive there.");
+        return;
+      }
+      apply({ dynamic: r.dynamic });
+      setShowDrive(false);
+      arriveAt(to.kind);
+      const lines = [`🚗 Drove to ${to.name}`];
+      if (friendIds.length) lines.push(`Offered ${friendIds.length} a lift`);
+      if (r.dynamic.curfew_fine) lines.push("🚧 Gate fine paid");
+      setToast(lines);
+    });
+  }
+
+  function answerRide(id: string, accept: boolean) {
+    setError(null);
+    setDismissedRides((d) => [...d, id]);
+    setRidePending(true);
+    startTransition(async () => {
+      const r = await respondRideAction(id, accept);
+      setRidePending(false);
+      refreshBadges();
+      if (!accept) return;
+      if (!r.dynamic) {
+        setError(r.error ?? "You missed the lift.");
+        return;
+      }
+      apply({ dynamic: r.dynamic });
+      arriveAt(r.dynamic.ride_kind ?? null);
+      setToast(["🚗 You hopped in!"]);
+    });
+  }
+
   function applyJob(slug: string) {
     setError(null);
     setJobPending(true);
@@ -842,6 +1016,20 @@ export default function GameClient({ game }: { game: GameState }) {
     if (!until || !workBusy(s.busy_activity ?? "") || paidCheck.current === until) return;
     paidCheck.current = until;
     setTimeout(() => startTransition(async () => void apply(await refreshGameAction())), 2000);
+  }
+
+  /** Leave whatever you are doing right now. */
+  function stopNow() {
+    setError(null);
+    setStopping(true);
+    startTransition(async () => {
+      const result = await stopActivityAction();
+      setStopping(false);
+      if (!apply(result)) return;
+      const stopped = (result.dynamic as { stopped?: string } | undefined)?.stopped ?? "";
+      // Work shows the payslip instead.
+      if (!stopped.startsWith("work:")) setToast(["✋ Stopped"]);
+    });
   }
 
   function wake() {
@@ -998,12 +1186,12 @@ export default function GameClient({ game }: { game: GameState }) {
         {hereActivities.map((a) => {
           const blocked = canDo(a);
           return (
+            <div key={a.slug} className="flex w-44 shrink-0 flex-col gap-1 sm:w-auto">
             <button
-              key={a.slug}
               type="button"
               onClick={() => doActivity(a)}
               disabled={occupied || blocked !== null}
-              className="w-44 shrink-0 rounded-2xl border border-white/10 bg-white/5 p-3 text-left transition hover:bg-white/10 disabled:opacity-40 active:scale-95 sm:w-auto"
+              className="flex-1 rounded-2xl border border-white/10 bg-white/5 p-3 text-left transition hover:bg-white/10 disabled:opacity-40 active:scale-95"
             >
               <div className="flex items-start justify-between gap-2">
                 <p className="text-sm font-bold leading-tight">{a.name}</p>
@@ -1021,6 +1209,17 @@ export default function GameClient({ game }: { game: GameState }) {
               </p>
               {blocked && <p className="mt-1 text-[11px] text-amber-300">{blocked}</p>}
             </button>
+            {!a.ends_day && (
+              <button
+                type="button"
+                onClick={() => setOutingFor(a)}
+                disabled={occupied || blocked !== null}
+                className="rounded-xl border border-emerald-400/30 px-2 py-1 text-[11px] font-semibold text-emerald-200 disabled:opacity-40"
+              >
+                👥 With friends
+              </button>
+            )}
+            </div>
           );
         })}
       </div>
@@ -1268,6 +1467,8 @@ export default function GameClient({ game }: { game: GameState }) {
             staff={roomStaff}
             staffBubbles={staffBubbles}
             onSelectStaff={setStaffSelected}
+            roomItems={game.player.room_items ?? []}
+            appearance={myAppearance}
           />
         ) : webgl ? (
           <CampusWorld
@@ -1292,6 +1493,8 @@ export default function GameClient({ game }: { game: GameState }) {
             staff={onDuty}
             staffBubbles={staffBubbles}
             onSelectStaff={setStaffSelected}
+            appearance={myAppearance}
+            playerCars={parkedCars}
           />
         ) : null}
       </div>
@@ -1446,6 +1649,29 @@ export default function GameClient({ game }: { game: GameState }) {
                 type="button"
                 onClick={() => {
                   setMenu(false);
+                  setShowShop(true);
+                }}
+                className="block w-full rounded-xl px-3 py-2 text-left hover:bg-white/10"
+              >
+                🛍️ Shop
+              </button>
+              {myCar && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setMenu(false);
+                    setShowDrive(true);
+                  }}
+                  disabled={occupied || asleep}
+                  className="block w-full rounded-xl px-3 py-2 text-left hover:bg-white/10 disabled:opacity-40"
+                >
+                  🚗 Drive your {myCar.name}
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => {
+                  setMenu(false);
                   setSocial({ tab: "friends" });
                 }}
                 className="block w-full rounded-xl px-3 py-2 text-left hover:bg-white/10"
@@ -1499,11 +1725,15 @@ export default function GameClient({ game }: { game: GameState }) {
         <div className="pointer-events-none absolute inset-x-0 top-1/4 flex justify-center">
           {busySlug ? (
             <BusyBar
+              key={`${busySlug}@${busyUntil}`}
               label={current.name}
               untilMs={busyUntil}
               totalMs={Number(current.duration_minutes) * 60_000}
               skewRef={skewRef}
               onDone={shiftMaybeOver}
+              onStop={stopNow}
+              warning={stopWarning(busySlug)}
+              stopping={stopping}
             />
           ) : (
             <div className="rounded-2xl bg-black/60 px-4 py-3 text-sm font-bold backdrop-blur">
@@ -1774,6 +2004,101 @@ export default function GameClient({ game }: { game: GameState }) {
       )}
       {showAcademics && (
         <AcademicsPanel academics={academics} nowMs={now} onClose={() => setShowAcademics(false)} />
+      )}
+
+      {rideOffer && !asleep && (
+        <div className="pointer-events-none absolute inset-x-0 top-36 z-20 flex justify-center px-3">
+          <div className="pointer-events-auto w-full max-w-sm rounded-2xl border border-amber-400/30 bg-[#10172e]/95 p-3 backdrop-blur">
+            <p className="text-sm font-bold">
+              🚗 {rideOffer.driver} offered you a lift in a {rideOffer.car}
+            </p>
+            <p className="text-xs text-zinc-400">To {rideOffer.place} · free, no energy used</p>
+            <div className="mt-2 flex gap-2">
+              <button
+                type="button"
+                onClick={() => answerRide(rideOffer.id, true)}
+                disabled={ridePending || occupied}
+                className="flex-1 rounded-xl bg-amber-400 py-2 text-sm font-bold text-black disabled:opacity-40"
+              >
+                {occupied ? "Finish what you're doing" : "Hop in"}
+              </button>
+              <button
+                type="button"
+                onClick={() => answerRide(rideOffer.id, false)}
+                className="rounded-xl border border-white/15 px-3 py-2 text-sm"
+              >
+                No thanks
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {(() => {
+        const invite = (badges?.outings ?? []).find(
+          (o) => !dismissedInvites.includes(o.id) && Date.parse(o.expires_at) > now
+        );
+        if (!invite || asleep || rideOffer) return null;
+        return (
+          <div className="pointer-events-none absolute inset-x-0 top-36 z-20 flex justify-center px-3">
+            <div className="pointer-events-auto w-full max-w-sm rounded-2xl border border-emerald-400/30 bg-[#10172e]/95 p-3 backdrop-blur">
+              <p className="text-sm font-bold">
+                👥 {invite.host} invited you: {invite.activity}
+              </p>
+              <p className="text-xs text-zinc-400">
+                At {invite.place} ·{" "}
+                {invite.cost_kobo === 0
+                  ? "Free"
+                  : invite.host_pays
+                    ? `${invite.host} is paying`
+                    : `You pay ${formatNaira(invite.cost_kobo)}`}
+              </p>
+              <div className="mt-2 flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => answerInvite(invite.id, true)}
+                  disabled={outingPending || occupied}
+                  className="flex-1 rounded-xl bg-emerald-400 py-2 text-sm font-bold text-black disabled:opacity-40"
+                >
+                  {occupied ? "Finish what you're doing" : "Join"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => answerInvite(invite.id, false)}
+                  className="rounded-xl border border-white/15 px-3 py-2 text-sm"
+                >
+                  No thanks
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
+      {showShop && <ShopPanel onClose={() => setShowShop(false)} onStyle={setStyle} />}
+
+      {showDrive && myCar && (
+        <DriveSheet
+          carName={myCar.name}
+          seats={myCar.seats}
+          locations={locations}
+          hereKind={s.location_kind}
+          friends={people.filter((p) => p.friend)}
+          pending={ridePending}
+          onDrive={drive}
+          onClose={() => setShowDrive(false)}
+        />
+      )}
+
+      {outingFor && (
+        <OutingSheet
+          activity={outingFor}
+          friends={people.filter((p) => p.friend)}
+          balance={dyn.balance_kobo}
+          pending={outingPending}
+          onSend={(ids, hostPays) => startOuting(outingFor, ids, hostPays)}
+          onClose={() => setOutingFor(null)}
+        />
       )}
 
       {showJobs && (

@@ -17,7 +17,8 @@ import { lightingFor } from "@/lib/game/lighting";
 import { seededRandom } from "@/lib/game/worldLayout";
 import type { WorldAvatar } from "./CampusWorld";
 import { makeLabelTexture } from "./labels";
-import { Bubble, NameTag, OtherPlayer, StaffNpc, type PlacedStaff, type ShownPerson } from "./People";
+import type { Appearance } from "@/lib/game/shop";
+import { Bubble, NameTag, OtherPlayer, StaffNpc, appearanceProps, type PlacedStaff, type ShownPerson } from "./People";
 
 type V3 = [number, number, number];
 
@@ -184,9 +185,74 @@ function CeilingFan() {
   );
 }
 
-function HostelRoom({ sky, primary, label }: { sky: string; primary: string; label: string }) {
+/** Upgrades bought in the shop, in your own hostel room. */
+function RoomUpgrades({ items }: { items: string[] }) {
+  const has = (k: string) => items.includes(k);
   return (
     <>
+      {has("ac") && (
+        <group>
+          <B p={[-1.9, 3.0, -3.86]} s={[1.6, 0.48, 0.24]} c="#f8fafc" rough={0.4} />
+          <B p={[-1.9, 2.8, -3.73]} s={[1.4, 0.05, 0.02]} c="#94a3b8" />
+          <B p={[-1.25, 3.12, -3.73]} s={[0.12, 0.05, 0.02]} c="#22c55e" e={2} />
+        </group>
+      )}
+      {has("speaker") && (
+        <group>
+          <B p={[1.65, 0.6, -3.35]} s={[0.5, 1.2, 0.5]} c="#111827" />
+          <B p={[1.65, 0.85, -3.09]} s={[0.3, 0.3, 0.02]} c="#374151" />
+          <B p={[1.65, 0.4, -3.09]} s={[0.36, 0.36, 0.02]} c="#374151" />
+          <B p={[1.65, 1.15, -3.09]} s={[0.3, 0.03, 0.02]} c="#38bdf8" e={2} />
+        </group>
+      )}
+      {has("posters") && (
+        <group>
+          <B p={[-4.93, 1.9, 0.6]} s={[0.02, 1.1, 0.8]} c="#dc2626" />
+          <B p={[-4.92, 2.05, 0.6]} s={[0.02, 0.4, 0.5]} c="#fde047" />
+          <B p={[-4.93, 1.9, 1.8]} s={[0.02, 1.1, 0.8]} c="#16a34a" />
+          <B p={[-4.92, 1.7, 1.8]} s={[0.02, 0.35, 0.35]} c="#f8fafc" />
+        </group>
+      )}
+      {has("led") && (
+        <group>
+          <B p={[0, 3.5, -3.9]} s={[9.8, 0.06, 0.06]} c="#e879f9" e={2.5} />
+          <B p={[-4.9, 3.5, 0]} s={[0.06, 0.06, 7.8]} c="#22d3ee" e={2.5} />
+          <B p={[4.9, 3.5, 0]} s={[0.06, 0.06, 7.8]} c="#22d3ee" e={2.5} />
+          <pointLight position={[0, 3.2, -1]} intensity={4} color="#e879f9" decay={2} />
+        </group>
+      )}
+      {has("fridge") && (
+        <group>
+          <B p={[-1.6, 0.45, -3.4]} s={[0.6, 0.9, 0.6]} c="#e5e7eb" rough={0.3} />
+          <B p={[-1.35, 0.55, -3.09]} s={[0.04, 0.3, 0.02]} c="#6b7280" />
+        </group>
+      )}
+      {has("ps5") && (
+        <group>
+          <B p={[4.6, 0.3, 0.5]} s={[0.6, 0.6, 1.3]} c="#1f2937" />
+          <B p={[4.85, 1.15, 0.5]} s={[0.08, 0.75, 1.3]} c="#0a0a0a" />
+          <B p={[4.8, 1.15, 0.5]} s={[0.02, 0.65, 1.2]} c="#2563eb" e={1.2} />
+          <B p={[4.55, 0.65, 0.2]} s={[0.25, 0.08, 0.35]} c="#f8fafc" />
+        </group>
+      )}
+    </>
+  );
+}
+
+function HostelRoom({
+  sky,
+  primary,
+  label,
+  upgrades,
+}: {
+  sky: string;
+  primary: string;
+  label: string;
+  upgrades: string[];
+}) {
+  return (
+    <>
+      <RoomUpgrades items={upgrades} />
       <Shell wall="#cfe3dc" floor="#b9a99a" />
       <BunkBed x={-3.8} blanket={primary} top="#f59e0b" />
       <BunkBed x={3.8} blanket="#22c55e" top="#3b82f6" />
@@ -503,7 +569,9 @@ function InteriorPlayer({
   spot,
   bubble,
   poseOverride,
+  appearance,
 }: {
+  appearance?: Appearance;
   avatar: WorldAvatar;
   spot: Spot;
   bubble: string | null;
@@ -563,6 +631,7 @@ function InteriorPlayer({
           hairColor={avatar.hairColor}
           outfit={avatar.outfit}
           action={pose === "walk" ? pose : (poseOverride ?? pose)}
+          {...appearanceProps(appearance)}
         />
         {bubble && <Bubble text={bubble} />}
       </group>
@@ -606,6 +675,8 @@ export default function InteriorScene({
   staff = [],
   staffBubbles = {},
   onSelectStaff,
+  roomItems = [],
+  appearance,
 }: {
   kind: string;
   avatar: WorldAvatar;
@@ -633,6 +704,10 @@ export default function InteriorScene({
   staff?: PlacedStaff[];
   staffBubbles?: Record<string, string>;
   onSelectStaff?: (id: string) => void;
+  /** Upgrades you bought for your hostel room. */
+  roomItems?: string[];
+  /** What you bought and wear. */
+  appearance?: Appearance;
 }) {
   const light = lightingFor(hour);
   const club = kind === "clubhouse";
@@ -652,7 +727,9 @@ export default function InteriorScene({
       <directionalLight position={[3, 6, 8]} intensity={club ? 0.3 : light.sun * 0.6} color={light.sunColor} />
       {club && <pointLight position={[0, 2.5, -2]} intensity={10} color="#22d3ee" decay={2} />}
 
-      {kind === "hostel" && <HostelRoom sky={light.sky} primary={primary} label={roomLabel ?? "Hostel"} />}
+      {kind === "hostel" && (
+        <HostelRoom sky={light.sky} primary={primary} label={roomLabel ?? "Hostel"} upgrades={roomItems} />
+      )}
       {kind === "cafeteria" && <CafeteriaRoom secondary={secondary} />}
       {kind === "library" && <LibraryRoom primary={primary} />}
       {kind === "faculty" && (
@@ -677,7 +754,7 @@ export default function InteriorScene({
           onSelect={(id) => onSelectStaff?.(id)}
         />
       ))}
-      <InteriorPlayer avatar={avatar} spot={spot} bubble={selfBubble} poseOverride={selfPose} />
+      <InteriorPlayer avatar={avatar} spot={spot} bubble={selfBubble} poseOverride={selfPose} appearance={appearance} />
       <CameraRig />
     </Canvas>
   );

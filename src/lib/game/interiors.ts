@@ -14,7 +14,10 @@ export type Pose =
   | "sleep"
   | "talk"
   | "toast"
-  | "fight";
+  | "fight"
+  | "eat"
+  | "dine"
+  | "football";
 
 export type Spot = { x: number; y: number; z: number; heading: number; pose: Pose };
 
@@ -36,9 +39,9 @@ export const BED_SPOT: Spot = { x: -3.8, y: 0.55, z: -0.5, heading: 0, pose: "sl
 export const ACTIVITY_SPOTS: Record<string, Spot> = {
   sleep: BED_SPOT,
   nap: BED_SPOT,
-  bread_and_tea: { x: 0, y: 0, z: -2.3, heading: Math.PI, pose: "sit" },
+  bread_and_tea: { x: 0, y: 0, z: -2.3, heading: Math.PI, pose: "dine" },
   hang_out_hostel: { x: 0.8, y: 0, z: 0.4, heading: -0.4, pose: "dance" },
-  cafeteria_meal: { x: -2, y: 0, z: 0.9, heading: Math.PI, pose: "sit" },
+  cafeteria_meal: { x: -2, y: 0, z: 0.9, heading: Math.PI, pose: "dine" },
   quiet_reading: { x: 1.5, y: 0, z: 0.9, heading: Math.PI, pose: "sit" },
   faculty_gist: { x: 2.6, y: 0, z: 1.6, heading: -0.6, pose: "busy" },
   clubhouse_hangout: { x: 0, y: 0.08, z: 0.2, heading: 0, pose: "dance" },

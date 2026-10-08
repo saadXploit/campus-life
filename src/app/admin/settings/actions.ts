@@ -11,6 +11,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 
 const schema = z.object({
   registration_open: z.enum(["true", "false"]),
+  shop_open: z.enum(["true", "false"]),
   transfer_min_account_age_hours: z.coerce.number().int().min(0).max(720),
   transfer_max_naira: z.coerce.number().int().min(1).max(100_000_000),
   transfer_daily_max_naira: z.coerce.number().int().min(1).max(1_000_000_000),
@@ -34,6 +35,7 @@ export async function saveSettingsAction(formData: FormData): Promise<void> {
 
   const values: Record<string, unknown> = {
     registration_open: v.registration_open === "true",
+    shop_open: v.shop_open === "true",
     transfer_min_account_age_hours: v.transfer_min_account_age_hours,
     transfer_max_kobo: v.transfer_max_naira * 100,
     transfer_daily_max_kobo: v.transfer_daily_max_naira * 100,

@@ -6,7 +6,10 @@ import { Object3D, type InstancedMesh } from "three";
 import type { GameAd } from "@/lib/game/gameTypes";
 import {
   WORLD_HALF,
+  campusRoads,
   entranceOf,
+  mainGate,
+  placeCarParks,
   footprintOf,
   obstacleOf,
   placeFacultyHalls,
@@ -16,6 +19,7 @@ import {
   type FacultyHall as Hall,
 } from "@/lib/game/worldLayout";
 import Building, { FacultyHall } from "./Buildings";
+import Roads, { type PlayerCar } from "./Roads";
 
 /**
  * The campus itself (ground, paths, trees, lamps, buildings), shared by the
@@ -65,6 +69,31 @@ export function useCampusLayout(locations: WorldLocation[], faculties: string[] 
       : [];
   }, [placed]);
 
+  // A ring road round the campus and a road out of the main gate.
+  const roads = useMemo(() => campusRoads(placed), [placed]);
+
+  // Car parks by the main gate and the Faculty Block.
+  const parks = useMemo(() => {
+    const blockers: Box[] = placed.map((p) => {
+      const f = footprintOf(p.kind);
+      return { minX: p.x - f.w / 2 - 2, maxX: p.x + f.w / 2 + 2, minZ: p.z - f.d / 2 - 2, maxZ: p.z + f.d / 2 + 2 };
+    });
+    // Keep the glowing entrance circles and the space in front of them clear.
+    for (const p of placed) {
+      blockers.push({ minX: p.entrance.x - 7, maxX: p.entrance.x + 7, minZ: p.entrance.z - 5, maxZ: p.entrance.z + 7 });
+    }
+    for (const p of placed.filter((q) => q.has_billboard)) {
+      const f = footprintOf(p.kind);
+      const bx = p.x + f.w / 2 + 3;
+      const bz = p.z + f.d / 2;
+      blockers.push({ minX: bx - 4, maxX: bx + 4, minZ: bz - 2, maxZ: bz + 2 });
+    }
+    const targets = ["market", "faculty"]
+      .map((k) => placed.find((p) => p.kind === k)?.entrance)
+      .filter((t): t is Point => Boolean(t));
+    return placeCarParks(targets, blockers, [...paths, ...roads]);
+  }, [placed, paths, roads]);
+
   // One building per faculty, around the main Faculty Block.
   const halls: (Hall & { facing: number })[] = useMemo(() => {
     const hub = placed.find((p) => p.kind === "faculty");
@@ -80,11 +109,14 @@ export function useCampusLayout(locations: WorldLocation[], faculties: string[] 
       const bz = p.z + f.d / 2;
       blockers.push({ minX: bx - 4, maxX: bx + 4, minZ: bz - 2, maxZ: bz + 2 });
     }
-    return placeFacultyHalls(hub, faculties, blockers, paths).map((h) => ({
+    for (const k of parks) {
+      blockers.push({ minX: k.x - k.w / 2 - 1, maxX: k.x + k.w / 2 + 1, minZ: k.z - k.d / 2 - 1, maxZ: k.z + k.d / 2 + 1 });
+    }
+    return placeFacultyHalls(hub, faculties, blockers, [...paths, ...roads]).map((h) => ({
       ...h,
       facing: Math.atan2(hub.x - h.x, hub.z - h.z),
     }));
-  }, [placed, faculties, paths]);
+  }, [placed, faculties, paths, roads, parks]);
 
   const obstacles = useMemo(() => {
     const boxes = placed.map((p) => obstacleOf(p.kind, p.x, p.z)).filter((b): b is Box => b !== null);
@@ -124,12 +156,16 @@ export function useCampusLayout(locations: WorldLocation[], faculties: string[] 
       if (nearBuilding) continue;
       if (halls.some((h) => Math.abs(x - h.x) < h.w / 2 + 4 && Math.abs(z - h.z) < h.d / 2 + 4)) continue;
       if (paths.some((path) => distanceToSegment(x, z, path.from, path.to) < 4)) continue;
+      if (roads.some((r) => distanceToSegment(x, z, r.from, r.to) < r.width / 2 + 2.5)) continue;
+      if (parks.some((k) => Math.abs(x - k.x) < k.w / 2 + 3 && Math.abs(z - k.z) < k.d / 2 + 3)) continue;
       out.push({ x, z, s: 0.8 + rand() * 0.6 });
     }
     return out;
-  }, [placed, paths, halls]);
+  }, [placed, paths, halls, roads, parks]);
 
-  return { placed, obstacles, paths, lamps, trees, halls };
+  const gate = useMemo(() => mainGate(roads), [roads]);
+
+  return { placed, obstacles, paths, lamps, trees, halls, roads, parks, gate };
 }
 
 export function Ground({ onPoint }: { onPoint?: (x: number, z: number) => void }) {
@@ -240,6 +276,7 @@ export function CampusBase({
   onSelectBuilding,
   onSelectAd,
   myFaculty = null,
+  playerCars = [],
 }: {
   layout: ReturnType<typeof useCampusLayout>;
   primary: string;
@@ -252,6 +289,7 @@ export function CampusBase({
   onSelectAd: (ad: GameAd) => void;
   /** Your own faculty, highlighted in the faculty district. */
   myFaculty?: string | null;
+  playerCars?: PlayerCar[];
 }) {
   const hub = layout.placed.find((p) => p.kind === "faculty") ?? null;
   const boards = billboardAds(layout.placed, ads, adRotation);
@@ -262,6 +300,7 @@ export function CampusBase({
       {layout.paths.map((p, i) => (
         <Path key={i} from={p.from} to={p.to} />
       ))}
+      <Roads roads={layout.roads} parks={layout.parks} gate={layout.gate} night={night} primary={primary} playerCars={playerCars} />
       <Trees spots={layout.trees} />
       <Lamps spots={layout.lamps} night={night} />
       {layout.placed.map((p) => (

@@ -5,8 +5,23 @@ import { useFrame, type ThreeEvent } from "@react-three/fiber";
 import type { Group } from "three";
 import Avatar3D from "@/components/scene/Avatar3D";
 import type { Pose } from "@/lib/game/interiors";
+import type { Appearance } from "@/lib/game/shop";
 import { UNIFORMS, type StaffMember } from "@/lib/game/staff";
 import { makeLabelTexture } from "./labels";
+
+/** Avatar props for what someone bought in the shop. */
+export function appearanceProps(a: Appearance | null | undefined) {
+  if (!a) return {};
+  return {
+    shirtColor: a.shirt,
+    trouserColor: a.trousers,
+    capColor: a.cap ?? null,
+    robeColor: a.robe,
+    glassesColor: a.glasses,
+    chainColor: a.chain,
+    shoeColor: a.shoes,
+  };
+}
 
 export type PlacedStaff = { staff: StaffMember; x: number; y: number; z: number; heading: number; pose: Pose };
 
@@ -66,19 +81,24 @@ export function NameTag({
   name,
   highlight = false,
   accent,
+  shine,
 }: {
   name: string;
   highlight?: boolean;
   /** Underline colour; staff use blue so they are never mistaken for players. */
   accent?: string;
+  /** A bought name tag (gold, diamond): the whole tag takes this colour. */
+  shine?: string;
 }) {
   const label = useMemo(
     () =>
-      makeLabelTexture(name, {
-        width: accent ? 512 : 384,
-        accent: accent ?? (highlight ? "#34d399" : "#fbbf24"),
-      }),
-    [name, highlight, accent]
+      shine
+        ? makeLabelTexture(name, { width: 384, bg: shine + "ee", fg: "#111827", accent: "#ffffff" })
+        : makeLabelTexture(name, {
+            width: accent ? 512 : 384,
+            accent: accent ?? (highlight ? "#34d399" : "#fbbf24"),
+          }),
+    [name, highlight, accent, shine]
   );
   useEffect(() => () => label.texture.dispose(), [label]);
   return (
@@ -114,6 +134,8 @@ export type ShownPerson = {
   pose: Pose;
   bubble: string | null;
   friend: boolean;
+  /** Shop items they wear. */
+  appearance?: Appearance;
 };
 
 /** Another real player. Tap them to see what you can do together. */
@@ -130,6 +152,7 @@ export function OtherPlayer({ p, onSelect }: { p: ShownPerson; onSelect: (id: st
         hairColor={p.avatar.hairColor}
         outfit={p.avatar.outfit}
         action={p.pose}
+        {...appearanceProps(p.appearance)}
       />
       {/* An invisible, larger target so people are easy to tap on a phone. */}
       <mesh position={[0, 1, 0]} visible={false}>
@@ -137,7 +160,7 @@ export function OtherPlayer({ p, onSelect }: { p: ShownPerson; onSelect: (id: st
         <meshBasicMaterial />
       </mesh>
       <group rotation={[0, -p.heading, 0]}>
-        <NameTag name={p.name} highlight={p.friend} />
+        <NameTag name={p.name} highlight={p.friend} shine={p.appearance?.tag} />
         {p.bubble && <Bubble text={p.bubble} />}
       </group>
     </group>

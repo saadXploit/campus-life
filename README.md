@@ -26,6 +26,12 @@ A multiplayer university life-simulation game. Next.js (App Router) + TypeScript
 
 - Stage 9 (jobs and campus staff): 8 jobs paying ₦5,000 to ₦20,000 a shift, bosses who are staff characters (never players), real-time shifts paid when they end, raises after 10 and 30 shifts, a daily shift limit, requirements (level, CGPA, age), admin pay controls; security guards, cleaners, porters and a groundsman on duty by the clock, drawn by the game with no network traffic.
 
+- Stage 10 (outings and roads): invite friends to eat, play football or hang out together, with the host paying for everyone or everyone paying their own (treated friends are told who paid); job shifts of 3 to 5 minutes; players are seen eating and playing football on the pitch; a ring road with traffic, a main gate road and arch, and car parks by the gate and the Faculty Block.
+
+- Stage 11A (shop): real-money purchases through Paystack for items only (never game naira), 18+ only; cars (parked by the main gate, drive anywhere for 1 energy and give up to 3 friends a lift), outfits, accessories, gold and diamond name tags, hostel room upgrades; a webhook and a return page that both confirm the payment with Paystack before handing anything over; admin purchases page and a shop on/off switch; refund policy page. Set PAYSTACK_SECRET_KEY to switch it on.
+
+- Stage 12 (leave any time): a Stop button on every activity, including work, lectures, exams and sleep. Leaving early is fair: you keep only part of a meal or activity's benefit, work pays for the time worked (no bonus, no raise credit), a lecture or study session does not count, and walking out of an exam cuts the exam mark.
+
 The long-term goal is an explorable 3D multiplayer campus. All game rules live in the database (Postgres functions), so the 3D client can be added without rewriting them.
 
 ## How the game stays fair

@@ -59,3 +59,9 @@ export async function refreshGameAction(): Promise<ActionResult> {
   const userId = await requirePlayerId();
   return call("get_game_dynamic", { p_user_id: userId });
 }
+
+/** Stop whatever you are doing (eating, playing, studying, a lecture, an exam, work or sleep). */
+export async function stopActivityAction(): Promise<ActionResult> {
+  const userId = await requirePlayerId();
+  return call("stop_activity", { p_user_id: userId });
+}
