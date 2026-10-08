@@ -12,6 +12,7 @@ import {
   OUTFITS,
   SKIN_TONES,
 } from "@/lib/game/options";
+import { Backdrop, JourneyHeader } from "@/components/journey/Journey";
 import { formatNaira } from "@/lib/money";
 import { createCharacterAction } from "./actions";
 
@@ -96,28 +97,54 @@ export default function CharacterCreator({ backgrounds }: { backgrounds: Backgro
   }
 
   const preview = (
-    <div className="mx-auto h-64 w-52 overflow-hidden rounded-3xl bg-gradient-to-b from-white/10 to-white/0">
+    <div className="mx-auto h-64 w-52 overflow-hidden rounded-3xl bg-gradient-to-b from-white/10 to-white/0 md:hidden">
       <AvatarPreview skin={skin} hairStyle={hairStyle} hairColor={hairColor} outfit={outfit} />
     </div>
   );
 
   return (
-    <main className="min-h-screen bg-[#0b1020] px-4 pb-32 pt-6 text-white">
-      <div className="mx-auto max-w-md">
-        <p className="text-center text-xs font-semibold tracking-[0.3em] text-amber-400">
-          CAMPUS LIFE
-        </p>
-        <div className="mt-3 flex gap-1">
-          {STEPS.map((s, i) => (
-            <div
-              key={s}
-              className={"h-1.5 flex-1 rounded-full " + (i <= step ? "bg-amber-400" : "bg-white/10")}
-            />
+    <main className="relative isolate min-h-screen px-4 pb-32 pt-6 text-white">
+      <Backdrop />
+      <div className="mx-auto max-w-5xl">
+        <JourneyHeader step="create" back={{ href: "/", label: "Home" }} />
+        <div className="md:grid md:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)] md:gap-10">
+        {/* Wide screens: your student is always on show while you choose. */}
+        <aside className="hidden md:block">
+          <div className="sticky top-6 rounded-[2rem] border border-white/10 bg-gradient-to-b from-white/[0.08] to-white/[0.01] p-5 text-center">
+            <div className="mx-auto h-[400px] w-full">
+              <AvatarPreview skin={skin} hairStyle={hairStyle} hairColor={hairColor} outfit={outfit} />
+            </div>
+            <p className="mt-2 text-2xl font-extrabold">{name || "Your student"}</p>
+            <p className="text-sm text-zinc-400">
+              {age} · {GENDERS.find((g) => g.value === gender)?.label}
+              {chosenBackground && ` · ${chosenBackground.name}`}
+            </p>
+            {chosenInterest && (
+              <p className="mt-2 inline-block rounded-full bg-white/10 px-3 py-1 text-xs font-semibold">
+                {chosenInterest.icon} {chosenInterest.label}
+              </p>
+            )}
+          </div>
+        </aside>
+        <div className="mx-auto w-full max-w-md md:max-w-none">
+        <div className="flex flex-wrap gap-1.5">
+          {STEPS.map((label, i) => (
+            <span
+              key={label}
+              className={
+                "rounded-full px-3 py-1 text-[11px] font-semibold " +
+                (i === step
+                  ? "bg-amber-400 text-black"
+                  : i < step
+                    ? "bg-emerald-400/15 text-emerald-300"
+                    : "bg-white/5 text-zinc-500")
+              }
+            >
+              {i < step ? "✓ " : ""}
+              {label}
+            </span>
           ))}
         </div>
-        <p className="mt-2 text-xs text-zinc-500">
-          Step {step + 1} of 5 · {STEPS[step]}
-        </p>
 
         <form action={formAction}>
           <input type="hidden" name="displayName" value={name} />
@@ -378,7 +405,7 @@ export default function CharacterCreator({ backgrounds }: { backgrounds: Backgro
           {hint && <p className="mt-4 text-sm text-amber-300">{hint}</p>}
 
           <div className="fixed inset-x-0 bottom-0 border-t border-white/10 bg-[#0b1020]/95 px-4 py-4 backdrop-blur">
-            <div className="mx-auto flex max-w-md gap-3">
+            <div className="mx-auto flex max-w-md gap-3 md:max-w-5xl md:justify-end">
               {step > 0 && (
                 <button
                   type="button"
@@ -408,6 +435,8 @@ export default function CharacterCreator({ backgrounds }: { backgrounds: Backgro
             </div>
           </div>
         </form>
+        </div>
+        </div>
       </div>
     </main>
   );

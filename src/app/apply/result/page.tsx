@@ -9,6 +9,7 @@ import { hasPassed } from "@/lib/game/exam";
 import { getMyLatestResult, revealResult } from "@/lib/game/result";
 import { formatNaira } from "@/lib/money";
 import { acceptOfferAction, declineOfferAction } from "./actions";
+import { Backdrop, JourneyHeader } from "@/components/journey/Journey";
 
 const primaryButton =
   "inline-block w-full rounded-2xl bg-gradient-to-r from-amber-400 to-orange-500 px-6 py-4 text-center text-base font-extrabold text-black active:scale-95";
@@ -37,9 +38,13 @@ export default async function ResultPage() {
 
   if (admitted && u && course) {
     return (
-      <main className="relative flex min-h-screen items-center justify-center bg-[#0b1020] px-5 py-10 text-white">
+      <main className="relative isolate min-h-screen px-5 py-6 text-white">
+        <Backdrop />
+        <div className="mx-auto max-w-4xl">
+          <JourneyHeader step="campus" />
+        </div>
         <Confetti />
-        <div className="relative w-full max-w-sm text-center">
+        <div className="relative mx-auto mt-2 w-full max-w-md rounded-[2rem] border border-white/10 bg-[#0f1530]/80 p-6 backdrop-blur text-center">
           <p className="text-xs font-semibold tracking-[0.3em] text-emerald-300">
             OFFER OF ADMISSION
           </p>
@@ -83,8 +88,12 @@ export default async function ResultPage() {
 
   if (result.outcome === "offer" && !result.offer_response && u && course) {
     return (
-      <main className="flex min-h-screen items-center justify-center bg-[#0b1020] px-5 py-10 text-white">
-        <div className="w-full max-w-sm text-center">
+      <main className="relative isolate min-h-screen px-5 py-6 text-white">
+        <Backdrop />
+        <div className="mx-auto max-w-4xl">
+          <JourneyHeader step="result" />
+        </div>
+        <div className="mx-auto mt-2 w-full max-w-md rounded-[2rem] border border-white/10 bg-[#0f1530]/80 p-6 backdrop-blur text-center">
           <p className="text-xs font-semibold tracking-[0.3em] text-amber-300">
             A DIFFERENT OFFER
           </p>
@@ -132,8 +141,12 @@ export default async function ResultPage() {
 
   // Rejected, or an offer that was declined.
   return (
-    <main className="flex min-h-screen items-center justify-center bg-[#0b1020] px-5 py-10 text-white">
-      <div className="w-full max-w-sm text-center">
+    <main className="relative isolate min-h-screen px-5 py-6 text-white">
+      <Backdrop />
+      <div className="mx-auto max-w-4xl">
+        <JourneyHeader step="result" />
+      </div>
+      <div className="mx-auto mt-2 w-full max-w-md rounded-[2rem] border border-white/10 bg-[#0f1530]/80 p-6 backdrop-blur text-center">
         <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-red-400/15 text-3xl">
           📭
         </div>

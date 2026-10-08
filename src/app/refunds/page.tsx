@@ -12,7 +12,7 @@ export default function RefundsPage() {
         </Link>
         <h1 className="text-3xl font-extrabold text-white">Shop and refund policy</h1>
         <p>
-          The Campus Life shop sells digital items for use inside the game, such as cars, outfits and room
+          The Campus Life shop sells digital items for use inside the game, such as outfits, looks and room
           upgrades. Prices are in Nigerian naira and payments are processed by Paystack.
         </p>
         <h2 className="pt-2 text-lg font-bold text-white">Who can buy</h2>

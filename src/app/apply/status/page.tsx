@@ -5,6 +5,7 @@ import UniversityCrest from "@/components/UniversityCrest";
 import { requireUser } from "@/lib/auth/guards";
 import { getMyOpenApplication } from "@/lib/game/applications";
 import { formatNaira } from "@/lib/money";
+import { Backdrop, JourneyHeader } from "@/components/journey/Journey";
 
 const primaryButton =
   "inline-block rounded-2xl bg-gradient-to-r from-amber-400 to-orange-500 px-6 py-3 text-base font-extrabold text-black active:scale-95";
@@ -18,8 +19,12 @@ export default async function ApplicationStatusPage() {
   const courseName = app.application_choices[0]?.courses.name;
 
   return (
-    <main className="flex min-h-screen items-center justify-center bg-[#0b1020] px-5 py-10 text-white">
-      <div className="w-full max-w-sm">
+    <main className="relative isolate min-h-screen px-5 py-6 text-white">
+      <Backdrop />
+      <div className="mx-auto max-w-4xl">
+        <JourneyHeader step="exam" />
+      </div>
+      <div className="mx-auto mt-2 w-full max-w-md rounded-[2rem] border border-white/10 bg-[#0f1530]/80 p-6 backdrop-blur">
         <div className="text-center">
           <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-emerald-400/20 text-3xl">
             {app.status === "awaiting_result" ? "⏳" : "✅"}

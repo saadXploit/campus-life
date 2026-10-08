@@ -4,6 +4,7 @@ import { useEffect, useRef, useState, useTransition } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import type { ExamQuestion } from "@/lib/game/exam";
 import { finishExamAction, saveAnswerAction } from "./actions";
+import { Backdrop, JourneyHeader } from "@/components/journey/Journey";
 
 const LETTERS = ["A", "B", "C", "D"];
 
@@ -77,10 +78,14 @@ export default function ExamRunner({
   const seconds = left === null ? 0 : left % 60;
 
   return (
-    <main className="min-h-screen bg-[#0b1020] px-4 pb-32 pt-5 text-white">
+    <main className="relative isolate min-h-screen px-4 pb-32 pt-5 text-white">
+      <Backdrop tint="#0ea5e9" />
+      <div className="mx-auto max-w-4xl">
+        <JourneyHeader step="exam" />
+      </div>
       <div className="mx-auto max-w-md">
         <div className="flex items-center justify-between">
-          <p className="text-xs font-semibold tracking-[0.3em] text-amber-400">ENTRANCE EXAM</p>
+          <p className="text-xs font-semibold tracking-[0.3em] text-sky-300">SCREENING EXAM</p>
           <p
             className={
               "rounded-full px-3 py-1 text-sm font-bold tabular-nums " +

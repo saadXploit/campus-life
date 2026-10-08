@@ -4,23 +4,32 @@ import Link from "next/link";
 import { useEffect, useState, useTransition } from "react";
 import { CATEGORY_LABELS, type ShopData, type ShopItem } from "@/lib/game/shop";
 import { formatNaira } from "@/lib/money";
-import { buyAction, equipAction, shopAction } from "./shop-actions";
+import { buyAction, buyWithGameAction, equipAction, shopAction, type GameBuyResult } from "./shop-actions";
 
 type Shop = ShopData & { payments: boolean; test_mode: boolean };
 
 const ORDER: ShopItem["category"][] = ["car", "outfit", "look", "room", "status", "ride", "move", "social"];
 
-/** The shop: digital items bought with real money (never game naira). 18+ only. */
+/**
+ * The shop. For now everything is bought with game naira. When the admin switches it to
+ * real money, items are paid through Paystack instead (18+ only, never adds game naira).
+ */
 export default function ShopPanel({
+  balance,
   onClose,
   onStyle,
+  onBought,
 }: {
+  /** Your game money, in kobo. */
+  balance: number;
   onClose: () => void;
   /** Called when you wear or take off something, with your new style. */
   onStyle: (style: Record<string, string>) => void;
+  /** Called after a game-money purchase with the fresh game state. */
+  onBought: (result: NonNullable<GameBuyResult["dynamic"]>) => void;
 }) {
   const [shop, setShop] = useState<Shop | null>(null);
-  const [tab, setTab] = useState<ShopItem["category"]>("car");
+  const [tab, setTab] = useState<ShopItem["category"]>("outfit");
   const [buying, setBuying] = useState<ShopItem | null>(null);
   const [confirmAge, setConfirmAge] = useState(false);
   const [email, setEmail] = useState("");
@@ -50,6 +59,27 @@ export default function ShopPanel({
     });
   }
 
+  function payWithGameMoney() {
+    if (!buying) return;
+    const item = buying;
+    setError(null);
+    startTransition(async () => {
+      const r = await buyWithGameAction(item.slug);
+      if (r.error || !r.dynamic) {
+        setError(r.error ?? "That did not work.");
+        return;
+      }
+      const result = r.dynamic;
+      setShop((sh) =>
+        sh
+          ? { ...sh, style: result.style, items: sh.items.map((i) => (i.slug === item.slug ? { ...i, owned: true } : i)) }
+          : sh
+      );
+      setBuying(null);
+      onBought(result);
+    });
+  }
+
   function pay() {
     if (!buying) return;
     setError(null);
@@ -68,7 +98,12 @@ export default function ShopPanel({
     });
   }
 
-  const items = shop?.items.filter((i) => i.category === tab) ?? [];
+  // Only categories with something on sale (or already owned) get a tab.
+  const tabs = shop ? ORDER.filter((c) => shop.items.some((i) => i.category === c && (i.available || i.owned))) : [];
+  const activeTab = tabs.includes(tab) ? tab : (tabs[0] ?? tab);
+  const items = shop?.items.filter((i) => i.category === activeTab) ?? [];
+  const gameMoney = shop?.currency !== "real";
+  const priceOf = (i: ShopItem) => (gameMoney ? (i.game_price_kobo ?? 0) : i.price_kobo);
 
   return (
     <div className="absolute inset-0 z-30 flex items-end justify-center bg-black/50 sm:items-center" onClick={onClose}>
@@ -79,9 +114,11 @@ export default function ShopPanel({
         <div className="flex items-start justify-between">
           <div>
             <p className="text-xs font-semibold tracking-[0.2em] text-amber-300">SHOP</p>
-            <p className="text-xl font-extrabold">Cars, outfits and more</p>
+            <p className="text-xl font-extrabold">Outfits, looks and your room</p>
             <p className="text-xs text-zinc-400">
-              Real money, paid securely with Paystack. Buys items only, never game naira. 18+ only.
+              {gameMoney
+                ? `Paid with your game money. You have ${formatNaira(balance)}.`
+                : "Real money, paid securely with Paystack. Buys items only, never game naira. 18+ only."}
             </p>
           </div>
           <button type="button" onClick={onClose} aria-label="Close" className="text-xl text-zinc-400">
@@ -89,12 +126,12 @@ export default function ShopPanel({
           </button>
         </div>
 
-        {shop?.test_mode && (
+        {shop?.test_mode && !gameMoney && (
           <p className="mt-3 rounded-xl bg-sky-400/10 p-2 text-xs text-sky-200">
             Test mode: use Paystack test cards. No real money moves.
           </p>
         )}
-        {shop && !shop.adult && (
+        {shop && !gameMoney && !shop.adult && (
           <p className="mt-3 rounded-xl bg-amber-400/10 p-3 text-sm text-amber-200">
             Shop purchases are for players aged 18 and over. You can still see what is on sale.
           </p>
@@ -105,14 +142,14 @@ export default function ShopPanel({
         {error && <p className="mt-3 rounded-xl bg-red-500/15 p-2 text-sm text-red-200">{error}</p>}
 
         <div className="mt-4 flex gap-2 overflow-x-auto pb-1">
-          {ORDER.map((c) => (
+          {tabs.map((c) => (
             <button
               key={c}
               type="button"
               onClick={() => setTab(c)}
               className={
                 "shrink-0 rounded-full px-3 py-1.5 text-xs font-semibold " +
-                (tab === c ? "bg-amber-400 text-black" : "bg-white/5 text-zinc-300")
+                (activeTab === c ? "bg-amber-400 text-black" : "bg-white/5 text-zinc-300")
               }
             >
               {CATEGORY_LABELS[c]}
@@ -169,10 +206,10 @@ export default function ShopPanel({
                           setError(null);
                           setBuying(item);
                         }}
-                        disabled={!shop.adult || !shop.open || !shop.payments}
+                        disabled={!shop.open || (!gameMoney && (!shop.adult || !shop.payments))}
                         className="rounded-xl bg-amber-400 px-3 py-2 text-xs font-extrabold text-black disabled:opacity-40"
                       >
-                        {formatNaira(item.price_kobo)}
+                        {formatNaira(priceOf(item))}
                       </button>
                     )}
                   </div>
@@ -182,11 +219,36 @@ export default function ShopPanel({
           </div>
         )}
 
-        {shop && !shop.payments && (
+        {shop && !gameMoney && !shop.payments && (
           <p className="mt-3 text-xs text-zinc-500">Payments are not switched on yet.</p>
         )}
 
-        {buying && (
+        {buying && gameMoney && (
+          <div className="mt-4 rounded-2xl border border-amber-400/30 bg-amber-400/5 p-4">
+            <p className="font-bold">
+              Buy {buying.name} for {formatNaira(priceOf(buying))}?
+            </p>
+            <p className="mt-1 text-xs text-zinc-400">
+              Paid from your game money ({formatNaira(balance)}).{" "}
+              {balance < priceOf(buying) && "You need more: jobs pay ₦5,000 to ₦20,000 a shift."}
+            </p>
+            <div className="mt-3 flex gap-2">
+              <button
+                type="button"
+                onClick={payWithGameMoney}
+                disabled={pending || balance < priceOf(buying)}
+                className="flex-1 rounded-xl bg-amber-400 py-2 font-extrabold text-black disabled:opacity-40"
+              >
+                {pending ? "Buying..." : "Buy now"}
+              </button>
+              <button type="button" onClick={() => setBuying(null)} className="rounded-xl border border-white/15 px-3 text-sm">
+                Cancel
+              </button>
+            </div>
+          </div>
+        )}
+
+        {buying && !gameMoney && (
           <div className="mt-4 rounded-2xl border border-amber-400/30 bg-amber-400/5 p-4">
             <p className="font-bold">
               Buy {buying.name} for {formatNaira(buying.price_kobo)}

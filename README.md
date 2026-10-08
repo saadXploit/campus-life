@@ -32,12 +32,28 @@ A multiplayer university life-simulation game. Next.js (App Router) + TypeScript
 
 - Stage 12 (leave any time): a Stop button on every activity, including work, lectures, exams and sleep. Leaving early is fair: you keep only part of a meal or activity's benefit, work pays for the time worked (no bonus, no raise credit), a lecture or study session does not count, and walking out of an exam cuts the exam mark.
 
+- Stage 13 (game-money shop and a new look): the shop now sells everything for game naira (cars ₦10,000 to ₦200,000); an admin switch moves it to real money (Paystack) later. Redesigned landing page, sign-in, character creator, university list (with federal/state/private filters), application, screening and result pages, with a journey tracker on every step.
+
+- Stage 14 (ready to publish): cars, bicycles, scooters and okada are off the shop for now (switched off, not deleted; game money refunded to car owners). Privacy policy and terms pages.
+
 The long-term goal is an explorable 3D multiplayer campus. All game rules live in the database (Postgres functions), so the 3D client can be added without rewriting them.
 
 ## How the game stays fair
 
 - Every game action runs as a Postgres function that only the server can call. The browser can read its own data but never write.
 - Money is stored in kobo (whole numbers). Every balance change goes through one function, wallet_apply, which also writes the ledger line. Balances can never go below zero.
+
+## Publishing (going live)
+
+1. Put the code on GitHub (a private repository is fine).
+2. Create a project on a host such as Vercel and import the repository. Next.js is detected automatically.
+3. In the host's Environment Variables, add every value from .env.local, with NEXT_PUBLIC_SITE_URL set to the real address (for example https://campuslife.ng). Also set NEXT_PUBLIC_CONTACT_EMAIL. Never commit .env.local.
+4. Supabase dashboard, Authentication, URL Configuration: set Site URL to the real address, and add https://YOUR-SITE/auth/callback and https://YOUR-SITE/admin/callback to Redirect URLs.
+5. Google Cloud console, OAuth consent screen: add the privacy (/privacy) and terms (/terms) links and your domain, then publish the app (switch from Testing to In production) so anyone can sign in.
+6. X developer portal: add the real website address. The callback URL stays the Supabase one.
+7. Make sure every SQL file in supabase/migrations has been run, in order, on the Supabase project the live site uses.
+8. Sign in once with the owner's X account (OWNER_X_USER_ID) and open /admin to check staff access.
+9. When Paystack is approved: add PAYSTACK_SECRET_KEY on the host, set the webhook to https://YOUR-SITE/api/paystack/webhook, and switch the shop to real money in Admin, Game settings.
 
 ## Run it on your computer
 

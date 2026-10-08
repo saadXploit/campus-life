@@ -28,10 +28,14 @@ export type ShopItem = {
   look: ItemLook;
   available: boolean;
   owned: boolean;
+  /** Price in game naira (kobo) while the shop takes game money. */
+  game_price_kobo: number | null;
 };
 
 export type ShopData = {
   open: boolean;
+  /** "game": paid with game naira. "real": paid with real money through Paystack. */
+  currency: "game" | "real";
   adult: boolean;
   age_confirmed: boolean;
   style: Record<string, string>;

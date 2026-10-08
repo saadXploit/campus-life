@@ -22,6 +22,7 @@ export default async function SettingsPage({
   const cfg = new Map((data ?? []).map((r) => [r.key as string, r.value as unknown]));
   const registrationOpen = cfg.get("registration_open") !== false;
   const shopOpen = cfg.get("shop_open") !== false;
+  const shopCurrency = cfg.get("shop_currency") === "real" ? "real" : "game";
 
   const field =
     "mt-1 w-full rounded-xl border border-white/15 bg-white/5 px-3 py-3 text-sm text-white outline-none focus:border-red-400";
@@ -63,14 +64,23 @@ export default async function SettingsPage({
           </section>
 
           <section className="rounded-2xl border border-white/10 bg-white/5 p-5">
-            <h2 className="text-lg font-bold">Shop (real money, Paystack)</h2>
+            <h2 className="text-lg font-bold">Shop</h2>
             <p className="mt-1 text-sm text-zinc-400">
               Closing the shop stops new purchases at once. Items already bought stay with their owners.
+              Switch to real money only after Paystack is set up (PAYSTACK_SECRET_KEY) and the real prices are
+              agreed.
             </p>
             <select name="shop_open" defaultValue={String(shopOpen)} className={field}>
               <option value="true">Open</option>
               <option value="false">Closed</option>
             </select>
+            <label className="mt-3 block text-sm text-zinc-300">
+              Paid with
+              <select name="shop_currency" defaultValue={shopCurrency} className={field}>
+                <option value="game">Game money (naira earned in the game)</option>
+                <option value="real">Real money (Paystack, 18+ only)</option>
+              </select>
+            </label>
           </section>
 
           <section className="space-y-4 rounded-2xl border border-white/10 bg-white/5 p-5">

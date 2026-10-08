@@ -75,10 +75,11 @@ import {
   wakeUpAction,
   type ActionResult,
 } from "./actions";
-import { academicsAction, attendLectureAction, studyAction, writeExamAction } from "./academic-actions";
+import { attendLectureAction, studyAction, writeExamAction } from "./academic-actions";
+import { fetchFeed } from "@/lib/game/feed";
 import { adViewAction } from "./ad-actions";
 import { applyJobAction, quitJobAction, startShiftAction } from "./job-actions";
-import { badgesAction, friendRequestAction, openDirectAction } from "./chat-actions";
+import { friendRequestAction, openDirectAction } from "./chat-actions";
 import type { SocialBadges } from "@/lib/game/social";
 import {
   blockAction,
@@ -87,7 +88,6 @@ import {
   reportAction,
   sayAction,
   setShareLocationAction,
-  snapshotAction,
 } from "./social-actions";
 
 function Loading() {
@@ -419,6 +419,7 @@ export default function GameClient({ game }: { game: GameState }) {
   // Shop items: what you wear and drive, the shop, driving and lifts.
   const [style, setStyle] = useState<Record<string, string>>(game.player.style ?? {});
   const [showShop, setShowShop] = useState(false);
+  const [roomItems, setRoomItems] = useState<string[]>(game.player.room_items ?? []);
   const [showDrive, setShowDrive] = useState(false);
   const [ridePending, setRidePending] = useState(false);
   const [dismissedRides, setDismissedRides] = useState<string[]>([]);
@@ -466,7 +467,7 @@ export default function GameClient({ game }: { game: GameState }) {
   useEffect(() => {
     let live = true;
     const load = () =>
-      academicsAction().then((a) => {
+      fetchFeed<Academics>("academics").then((a) => {
         if (live && a) setAcademics(a);
       });
     const first = setTimeout(load, 200);
@@ -483,7 +484,7 @@ export default function GameClient({ game }: { game: GameState }) {
     const load = () => {
       if (document.visibilityState !== "visible") return;
       if (Date.now() - lastInput.current > 5 * 60_000) return;
-      void badgesAction().then((b) => {
+      void fetchFeed<SocialBadges>("badges").then((b) => {
         if (live && b) setBadges(b);
       });
     };
@@ -497,11 +498,11 @@ export default function GameClient({ game }: { game: GameState }) {
   }, []);
 
   function refreshBadges() {
-    void badgesAction().then((b) => b && setBadges(b));
+    void fetchFeed<SocialBadges>("badges").then((b) => b && setBadges(b));
   }
 
   function refreshAcademics() {
-    void academicsAction().then((a) => a && setAcademics(a));
+    void fetchFeed<Academics>("academics").then((a) => a && setAcademics(a));
   }
 
   useEffect(() => {
@@ -603,7 +604,7 @@ export default function GameClient({ game }: { game: GameState }) {
       if (document.visibilityState !== "visible") return;
       // Idle for a while: stop telling the server we are here, so we drop off the live map.
       if (Date.now() - lastInput.current > 5 * 60_000) return;
-      const snap = await snapshotAction(lastEventId.current);
+      const snap = await fetchFeed<WorldSnapshot>("snapshot", { since: lastEventId.current });
       if (!stopped && snap) onSnapshot(snap);
     }
     const first = setTimeout(poll, 300);
@@ -1467,7 +1468,7 @@ export default function GameClient({ game }: { game: GameState }) {
             staff={roomStaff}
             staffBubbles={staffBubbles}
             onSelectStaff={setStaffSelected}
-            roomItems={game.player.room_items ?? []}
+            roomItems={roomItems}
             appearance={myAppearance}
           />
         ) : webgl ? (
@@ -2075,7 +2076,20 @@ export default function GameClient({ game }: { game: GameState }) {
         );
       })()}
 
-      {showShop && <ShopPanel onClose={() => setShowShop(false)} onStyle={setStyle} />}
+      {showShop && (
+        <ShopPanel
+          balance={dyn.balance_kobo}
+          onClose={() => setShowShop(false)}
+          onStyle={setStyle}
+          onBought={(r) => {
+            apply({ dynamic: r });
+            setStyle(r.style);
+            const item = r.room_item;
+            if (item) setRoomItems((list) => (list.includes(item) ? list : [...list, item]));
+            setToast([`🛍️ Bought! -${formatNaira(dyn.balance_kobo - r.balance_kobo)}`]);
+          }}
+        />
+      )}
 
       {showDrive && myCar && (
         <DriveSheet

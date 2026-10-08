@@ -1,5 +1,6 @@
 "use client";
 
+import { fetchFeed } from "@/lib/game/feed";
 import { useCallback, useEffect, useRef, useState, useTransition } from "react";
 import type { GameDynamic } from "@/lib/game/gameTypes";
 import {
@@ -18,7 +19,6 @@ import {
   breakUpAction,
   createGroupAction,
   friendRequestAction,
-  getMessagesAction,
   getSocialAction,
   leaveConversationAction,
   mutePlayerAction,
@@ -81,12 +81,9 @@ function ChatScreen({
   const bottom = useRef<HTMLDivElement>(null);
 
   const poll = useCallback(async () => {
-    const r = await getMessagesAction(conversationId, lastId.current, null);
-    if (!r.data) {
-      if (r.error) setError(r.error);
-      return;
-    }
-    const data = r.data;
+    // Checked every few seconds, so it uses the side channel (never blocks your taps).
+    const data = await fetchFeed<ChatView>("messages", { c: conversationId, after: lastId.current });
+    if (!data) return;
     setView(data);
     if (data.messages.length) {
       lastId.current = data.messages[data.messages.length - 1].id;

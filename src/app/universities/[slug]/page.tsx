@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
+import { JourneyHeader } from "@/components/journey/Journey";
 import StatBar from "@/components/StatBar";
 import UniversityCrest from "@/components/UniversityCrest";
 import { requireUser } from "@/lib/auth/guards";
@@ -23,16 +24,14 @@ export default async function UniversityPage({
   const { university: u, faculties } = result;
 
   return (
-    <main className="min-h-screen bg-[#0b1020] pb-16 text-white">
+    <main className="min-h-screen bg-[#0b1020] pb-28 text-white">
       <div
         className="px-4 pb-8 pt-6"
         style={{ background: `linear-gradient(160deg, ${u.primary_color}, #0b1020 85%)` }}
       >
         <div className="mx-auto max-w-3xl">
-          <Link href="/universities" className="text-sm text-zinc-300 hover:text-white">
-            All universities
-          </Link>
-          <div className="mt-6 flex items-center gap-4">
+          <JourneyHeader step="choose" back={{ href: "/universities", label: "All universities" }} />
+          <div className="mt-2 flex items-center gap-4">
             <UniversityCrest
               shortName={u.short_name}
               primary={u.primary_color}
@@ -130,12 +129,21 @@ export default async function UniversityPage({
           </div>
         </div>
 
-                <Link
-          href="/apply"
-          className="block rounded-2xl bg-gradient-to-r from-amber-400 to-orange-500 py-4 text-center text-base font-extrabold text-black active:scale-95"
-        >
-          Apply for admission
-        </Link>
+      </div>
+
+      <div className="fixed inset-x-0 bottom-0 border-t border-white/10 bg-[#0b1020]/95 px-4 py-4 backdrop-blur">
+        <div className="mx-auto flex max-w-3xl items-center gap-4">
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-sm font-bold">{u.name}</p>
+            <p className="text-xs text-zinc-400">{formatNaira(u.tuition_per_semester_kobo)} a semester · {competitiveness(u.difficulty)}</p>
+          </div>
+          <Link
+            href="/apply"
+            className="shrink-0 rounded-2xl bg-gradient-to-r from-amber-400 to-orange-500 px-6 py-3 text-sm font-extrabold text-black active:scale-95"
+          >
+            Apply →
+          </Link>
+        </div>
       </div>
     </main>
   );

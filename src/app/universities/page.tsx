@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import { Backdrop, JourneyHeader } from "@/components/journey/Journey";
 import StatBar from "@/components/StatBar";
 import UniversityCrest from "@/components/UniversityCrest";
 import { requireUser } from "@/lib/auth/guards";
@@ -7,26 +8,63 @@ import { getMyPlayer } from "@/lib/game/player";
 import { TYPE_LABEL, competitiveness, listUniversities } from "@/lib/game/universities";
 import { formatNaira } from "@/lib/money";
 
-export default async function UniversitiesPage() {
+const FILTERS = [
+  { key: "all", label: "All" },
+  { key: "federal", label: "Federal" },
+  { key: "state", label: "State" },
+  { key: "private", label: "Private" },
+] as const;
+
+export default async function UniversitiesPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ type?: string }>;
+}) {
   await requireUser();
   if (!(await getMyPlayer())) redirect("/create");
 
-  const universities = await listUniversities();
+  const { type } = await searchParams;
+  const filter = FILTERS.some((x) => x.key === type) ? (type as string) : "all";
+  const all = await listUniversities();
+  const universities = filter === "all" ? all : all.filter((u) => u.type === filter);
 
   return (
-    <main className="min-h-screen bg-[#0b1020] px-4 py-8 text-white">
+    <main className="relative isolate min-h-screen px-4 py-6 text-white">
+      <Backdrop />
       <div className="mx-auto max-w-5xl">
-        <Link href="/welcome" className="text-sm text-zinc-400 hover:text-white">
-          Back
-        </Link>
-        <p className="mt-6 text-xs font-semibold tracking-[0.3em] text-amber-400">
-          CAMPUS LIFE
-        </p>
-        <h1 className="mt-2 text-3xl font-extrabold">Choose your campus</h1>
-        <p className="mt-1 max-w-xl text-sm text-zinc-400">
-          Each university has its own fees, pressure and personality. Tap one to see what
-          it offers.
-        </p>
+        <JourneyHeader step="choose" back={{ href: "/welcome", label: "Back" }} />
+        <div className="flex flex-wrap items-end justify-between gap-4">
+          <div>
+            <h1 className="text-3xl font-extrabold">Choose your campus</h1>
+            <p className="mt-1 max-w-xl text-sm text-zinc-400">
+              Each university has its own fees, pressure and personality. Tap one to see what it offers.
+            </p>
+          </div>
+          <Link
+            href="/apply"
+            className="rounded-2xl bg-gradient-to-r from-amber-400 to-orange-500 px-5 py-3 text-sm font-extrabold text-black active:scale-95"
+          >
+            Apply now →
+          </Link>
+        </div>
+
+        <div className="mt-6 flex gap-2 overflow-x-auto pb-1">
+          {FILTERS.map((x) => (
+            <Link
+              key={x.key}
+              href={x.key === "all" ? "/universities" : `/universities?type=${x.key}`}
+              className={
+                "shrink-0 rounded-full px-4 py-2 text-sm font-semibold " +
+                (filter === x.key ? "bg-white text-black" : "border border-white/15 bg-white/5 text-zinc-300")
+              }
+            >
+              {x.label}
+              <span className="ml-1 text-xs opacity-60">
+                {x.key === "all" ? all.length : all.filter((u) => u.type === x.key).length}
+              </span>
+            </Link>
+          ))}
+        </div>
 
         {universities.length === 0 && (
           <p className="mt-8 rounded-2xl border border-white/10 bg-white/5 p-5 text-sm text-zinc-400">
@@ -34,12 +72,12 @@ export default async function UniversitiesPage() {
           </p>
         )}
 
-        <div className="mt-8 grid gap-5 md:grid-cols-3">
+        <div className="mt-6 grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
           {universities.map((u) => (
             <Link
               key={u.id}
               href={`/universities/${u.slug}`}
-              className="block overflow-hidden rounded-3xl border border-white/10 bg-white/[0.04] transition active:scale-[0.98] md:hover:-translate-y-1"
+              className="block overflow-hidden rounded-3xl border border-white/10 bg-[#0f1530]/80 backdrop-blur transition hover:border-white/25 active:scale-[0.98] md:hover:-translate-y-1"
             >
               <div
                 className="flex items-center gap-4 p-5"

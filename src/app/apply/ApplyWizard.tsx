@@ -5,6 +5,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import UniversityCrest from "@/components/UniversityCrest";
 import { formatNaira } from "@/lib/money";
 import { submitApplicationAction } from "./actions";
+import { Backdrop, JourneyHeader } from "@/components/journey/Journey";
 
 type Catalog = {
   faculty: string;
@@ -76,22 +77,30 @@ export default function ApplyWizard({
   }
 
   return (
-    <main className="min-h-screen bg-[#0b1020] px-4 pb-32 pt-6 text-white">
+    <main className="relative isolate min-h-screen px-4 pb-32 pt-6 text-white">
+      <Backdrop />
+      <div className="mx-auto max-w-4xl">
+        <JourneyHeader step="apply" back={{ href: "/universities", label: "Universities" }} />
+      </div>
       <div className="mx-auto max-w-md">
-        <p className="text-center text-xs font-semibold tracking-[0.3em] text-amber-400">
-          ADMISSION
-        </p>
-        <div className="mt-3 flex gap-1">
-          {STEPS.map((s, i) => (
-            <div
-              key={s}
-              className={"h-1.5 flex-1 rounded-full " + (i <= step ? "bg-amber-400" : "bg-white/10")}
-            />
+        <div className="flex flex-wrap gap-1.5">
+          {STEPS.map((label, i) => (
+            <span
+              key={label}
+              className={
+                "rounded-full px-3 py-1 text-[11px] font-semibold " +
+                (i === step
+                  ? "bg-amber-400 text-black"
+                  : i < step
+                    ? "bg-emerald-400/15 text-emerald-300"
+                    : "bg-white/5 text-zinc-500")
+              }
+            >
+              {i < step ? "✓ " : ""}
+              {label}
+            </span>
           ))}
         </div>
-        <p className="mt-2 text-xs text-zinc-500">
-          Step {step + 1} of 3 · {STEPS[step]}
-        </p>
 
         <form action={formAction}>
           <input type="hidden" name="courseCode" value={courseCode} />

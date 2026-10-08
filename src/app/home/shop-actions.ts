@@ -4,6 +4,7 @@ import { z } from "zod";
 import { requirePlayerId } from "@/lib/auth/guards";
 import { getServerEnv } from "@/lib/env";
 import { initializePayment, paystackKey, paystackTestMode } from "@/lib/payments/paystack";
+import type { GameDynamic } from "@/lib/game/gameTypes";
 import type { ShopData } from "@/lib/game/shop";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient } from "@/lib/supabase/server";
@@ -18,6 +19,9 @@ const ERRORS: Record<string, string> = {
   "shop: confirm age": "Please confirm you are 18 or older.",
   "shop: owned": "You already own that.",
   "shop: not owned": "You don't own that yet.",
+  "shop: real money": "The shop now takes real money. Refresh the shop.",
+  "shop: game money": "The shop takes game money right now. Refresh the shop.",
+  "not enough money": "You don't have enough game money for that yet. Work a few shifts first.",
   "slow down": "Slow down a little and try again.",
   blocked: "This account cannot play right now.",
 };
@@ -86,4 +90,18 @@ export async function equipAction(item: string, on: boolean): Promise<{ style?: 
   const { data, error } = await createAdminClient().rpc("equip_item", { p_user_id: userId, p_item: item, p_on: on === true });
   if (error) return { error: message(error.message) };
   return { style: (data as { style: Record<string, string> }).style };
+}
+
+export type GameBuyResult = {
+  dynamic?: GameDynamic & { style: Record<string, string>; item: string; category: string; room_item: string | null };
+  error?: string;
+};
+
+/** Buys an item with game naira (while the shop is set to game money). */
+export async function buyWithGameAction(item: string): Promise<GameBuyResult> {
+  const userId = await requirePlayerId();
+  if (!/^[a-z0-9_]{2,40}$/.test(item)) return { error: "That item is not on sale." };
+  const { data, error } = await createAdminClient().rpc("buy_with_game_money", { p_user_id: userId, p_item: item });
+  if (error) return { error: message(error.message) };
+  return { dynamic: data as GameBuyResult["dynamic"] };
 }
