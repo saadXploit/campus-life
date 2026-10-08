@@ -184,7 +184,7 @@ function CeilingFan() {
   );
 }
 
-function HostelRoom({ sky, primary }: { sky: string; primary: string }) {
+function HostelRoom({ sky, primary, label }: { sky: string; primary: string; label: string }) {
   return (
     <>
       <Shell wall="#cfe3dc" floor="#b9a99a" />
@@ -208,7 +208,7 @@ function HostelRoom({ sky, primary }: { sky: string; primary: string }) {
       <Chair x={-0.8} z={1.3} heading={0.6} c="#ef4444" />
       <Chair x={2} z={1.2} heading={-0.7} c="#ef4444" />
       <B p={[2.4, 0.35, -0.3]} s={[0.4, 0.7, 0.4]} c="#111827" />
-      <WallText text="Room 12 · Block C" p={[-4.94, 2.6, 2.2]} w={1.6} bg="#1e293b" fg="#fbbf24" />
+      <WallText text={label} p={[0, 3.25, -3.93]} w={1.6} bg="#1e293b" fg="#fbbf24" />
       <CeilingFan />
     </>
   );
@@ -602,6 +602,7 @@ export default function InteriorScene({
   board,
   department,
   lecturer,
+  roomLabel,
 }: {
   kind: string;
   avatar: WorldAvatar;
@@ -623,6 +624,8 @@ export default function InteriorScene({
   department?: string | null;
   /** The lecturer teaching right now (a staff character), or null between lectures. */
   lecturer?: Lecturer | null;
+  /** "Room 12": which room of this place you are in. */
+  roomLabel?: string | null;
 }) {
   const light = lightingFor(hour);
   const club = kind === "clubhouse";
@@ -642,7 +645,7 @@ export default function InteriorScene({
       <directionalLight position={[3, 6, 8]} intensity={club ? 0.3 : light.sun * 0.6} color={light.sunColor} />
       {club && <pointLight position={[0, 2.5, -2]} intensity={10} color="#22d3ee" decay={2} />}
 
-      {kind === "hostel" && <HostelRoom sky={light.sky} primary={primary} />}
+      {kind === "hostel" && <HostelRoom sky={light.sky} primary={primary} label={roomLabel ?? "Hostel"} />}
       {kind === "cafeteria" && <CafeteriaRoom secondary={secondary} />}
       {kind === "library" && <LibraryRoom primary={primary} />}
       {kind === "faculty" && (

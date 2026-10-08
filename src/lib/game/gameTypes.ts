@@ -60,6 +60,11 @@ export type Person = {
   hair_color: number;
   outfit: number;
   location_kind: string;
+  /** Which room of that place they are in (busy places split into rooms). */
+  room: number;
+  /** In the same place and the same room as you. */
+  same_room: boolean;
+  friend: boolean;
   asleep: boolean;
   activity: string | null;
   bond: number;
@@ -79,6 +84,9 @@ export type PlaceEvent = {
 
 export type WorldSnapshot = {
   people: Person[];
+  /** Everyone online on campus, people at your place, and how many rooms it has split into. */
+  counts: { online: number; here: number; rooms_here: number };
+  room: number;
   events: PlaceEvent[];
   location_kind: string | null;
   server_time: string;
@@ -94,6 +102,9 @@ export type GameDynamic = {
     asleep_since: string | null;
     busy_until: string | null;
     busy_activity: string | null;
+    /** Your room at this place (your hostel room number at home). */
+    room?: number;
+    share_location?: boolean;
   };
   balance_kobo: number;
   unread: number;

@@ -66,7 +66,15 @@ import { academicsAction, attendLectureAction, studyAction, writeExamAction } fr
 import { adViewAction } from "./ad-actions";
 import { badgesAction, friendRequestAction, openDirectAction } from "./chat-actions";
 import type { SocialBadges } from "@/lib/game/social";
-import { blockAction, interactAction, reportAction, sayAction, snapshotAction } from "./social-actions";
+import {
+  blockAction,
+  interactAction,
+  joinFriendRoomAction,
+  reportAction,
+  sayAction,
+  setShareLocationAction,
+  snapshotAction,
+} from "./social-actions";
 
 function Loading() {
   return (
@@ -298,6 +306,11 @@ export default function GameClient({ game }: { game: GameState }) {
 
   // Social: who is around, what is happening, who you are looking at.
   const [people, setPeople] = useState<Person[]>([]);
+  const [counts, setCounts] = useState<{ online: number; here: number; rooms_here: number } | null>(null);
+  // Inside a room the panel folds down so the whole room is visible.
+  const [panelOpen, setPanelOpen] = useState(true);
+  // Players who stop touching the game stop appearing live after a while.
+  const lastInput = useRef(0);
   const [feed, setFeed] = useState<FeedLine[]>([]);
   const [effects, setEffects] = useState<Record<string, Effect>>({});
   const [selected, setSelected] = useState<string | null>(null);
@@ -373,6 +386,7 @@ export default function GameClient({ game }: { game: GameState }) {
     let live = true;
     const load = () => {
       if (document.visibilityState !== "visible") return;
+      if (Date.now() - lastInput.current > 5 * 60_000) return;
       void badgesAction().then((b) => {
         if (live && b) setBadges(b);
       });
@@ -451,8 +465,24 @@ export default function GameClient({ game }: { game: GameState }) {
     }
   }
 
+  useEffect(() => {
+    const mark = () => {
+      lastInput.current = Date.now();
+    };
+    mark();
+    window.addEventListener("pointerdown", mark);
+    window.addEventListener("keydown", mark);
+    window.addEventListener("wheel", mark, { passive: true });
+    return () => {
+      window.removeEventListener("pointerdown", mark);
+      window.removeEventListener("keydown", mark);
+      window.removeEventListener("wheel", mark);
+    };
+  }, []);
+
   const onSnapshot = useEffectEvent((snap: WorldSnapshot) => {
     setPeople(snap.people);
+    if (snap.counts) setCounts(snap.counts);
     const serverNow = Date.parse(snap.server_time);
     for (const ev of snap.events) {
       lastEventId.current = Math.max(lastEventId.current, ev.id);
@@ -469,6 +499,8 @@ export default function GameClient({ game }: { game: GameState }) {
     let stopped = false;
     async function poll() {
       if (document.visibilityState !== "visible") return;
+      // Idle for a while: stop telling the server we are here, so we drop off the live map.
+      if (Date.now() - lastInput.current > 5 * 60_000) return;
       const snap = await snapshotAction(lastEventId.current);
       if (!stopped && snap) onSnapshot(snap);
     }
@@ -518,7 +550,18 @@ export default function GameClient({ game }: { game: GameState }) {
   const hour = lagosHour(now);
   const night = lightingFor(hour).lamp;
 
-  const herePeople = people.filter((p) => p.location_kind === s.location_kind);
+  const herePeople = people.filter((p) => p.same_room);
+  // Friends at this place but in another of its rooms.
+  const friendsElsewhereHere = people.filter(
+    (p) => p.friend && !p.same_room && p.location_kind === s.location_kind
+  );
+  const myRoom = s.room ?? 1;
+  const roomLabel =
+    roomKind === "hostel"
+      ? `Room ${myRoom}`
+      : (counts?.rooms_here ?? 1) > 1 || myRoom > 1
+        ? `Room ${myRoom}`
+        : null;
 
   function poseOf(p: Person, slotPose: Pose | null): Pose {
     const fx = effects[p.id]?.pose;
@@ -643,7 +686,10 @@ export default function GameClient({ game }: { game: GameState }) {
     const kind = zonePlace.kind;
     // Already checked in here: just walk inside, no cost.
     if (atCheckedInPlace) {
-      if (hasInterior(kind)) setInside(kind);
+      if (hasInterior(kind)) {
+        setInside(kind);
+        setPanelOpen(false);
+      }
       return;
     }
     setError(null);
@@ -657,7 +703,10 @@ export default function GameClient({ game }: { game: GameState }) {
       }
       if (ok) {
         setFeed([]);
-        if (hasInterior(kind)) setInside(kind);
+        if (hasInterior(kind)) {
+          setInside(kind);
+          setPanelOpen(false);
+        }
       }
     });
   }
@@ -781,6 +830,29 @@ export default function GameClient({ game }: { game: GameState }) {
       eventId: lastMessageFrom[person.id] ?? null,
     });
     return result.error ?? null;
+  }
+
+  function joinRoom(friend: Person) {
+    setError(null);
+    startTransition(async () => {
+      const ok = apply(await joinFriendRoomAction(friend.id));
+      if (ok) {
+        setSelected(null);
+        setFeed([]);
+        lastEventId.current = 0;
+        handled.current.clear();
+        setToast([`🚪 You joined ${friend.name}`]);
+      }
+    });
+  }
+
+  function toggleShareLocation() {
+    const next = !(s.share_location ?? true);
+    startTransition(async () => {
+      if (apply(await setShareLocationAction(next))) {
+        setToast([next ? "📍 People nearby can see you" : "👻 Only friends can see you now"]);
+      }
+    });
   }
 
   function toggleSound() {
@@ -942,6 +1014,21 @@ export default function GameClient({ game }: { game: GameState }) {
       ) : (
         <p className="text-xs text-zinc-500">Nobody else is here right now.</p>
       )}
+      {friendsElsewhereHere.length > 0 && (
+        <div className="mt-2 flex flex-wrap gap-2">
+          {friendsElsewhereHere.map((f) => (
+            <button
+              key={f.id}
+              type="button"
+              onClick={() => joinRoom(f)}
+              disabled={occupied}
+              className="rounded-full border border-emerald-400/40 bg-emerald-400/10 px-3 py-1 text-xs font-semibold text-emerald-200 disabled:opacity-40"
+            >
+              💚 {f.name} is in Room {f.room} · Join
+            </button>
+          ))}
+        </div>
+      )}
       {feed.length > 0 && (
         <div className="mt-2 space-y-0.5 text-xs text-zinc-300">
           {feed.map((f) => (
@@ -1003,6 +1090,7 @@ export default function GameClient({ game }: { game: GameState }) {
             onSelectPerson={setSelected}
             song={song}
             board={board}
+            roomLabel={roomLabel}
             department={enrollment.department ?? null}
             lecturer={liveMine ? lecturerFor(liveMine.code) : null}
           />
@@ -1114,7 +1202,9 @@ export default function GameClient({ game }: { game: GameState }) {
           <MiniMeter icon="⚡" value={s.energy} color="#fbbf24" />
           <MiniMeter icon="❤️" value={s.health} color="#f87171" />
           <MiniMeter icon="😊" value={s.happiness} color="#e879f9" />
-          <p className="text-[11px] text-zinc-400">👥 {people.length} online on campus</p>
+          <p className="text-[11px] text-zinc-400">
+            👥 {counts ? `${counts.online.toLocaleString("en-NG")} online · ${people.length} shown` : "..."}
+          </p>
           {academics && (
             <button
               type="button"
@@ -1164,6 +1254,17 @@ export default function GameClient({ game }: { game: GameState }) {
                 className="block w-full rounded-xl px-3 py-2 text-left hover:bg-white/10"
               >
                 👥 Friends & dating
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setMenu(false);
+                  toggleShareLocation();
+                }}
+                className="block w-full rounded-xl px-3 py-2 text-left hover:bg-white/10"
+              >
+                {(s.share_location ?? true) ? "📍 Visible to people nearby" : "👻 Hidden from strangers"}
+                <span className="block text-[11px] text-zinc-500">Tap to change. Friends always see you.</span>
               </button>
               <Link href="/campus" className="block rounded-xl px-3 py-2 hover:bg-white/10">
                 🗺️ Campus map
@@ -1231,31 +1332,73 @@ export default function GameClient({ game }: { game: GameState }) {
       {/* context panel at the bottom */}
       {!asleep && (
         <div className="pointer-events-none absolute inset-x-0 bottom-0 p-3 sm:p-4">
-          <div className="pointer-events-auto mx-auto max-h-[60dvh] max-w-xl overflow-y-auto rounded-3xl border border-white/10 bg-[#0b1020]/85 p-4 backdrop-blur">
+          <div className="pointer-events-auto mx-auto max-h-[45dvh] max-w-xl overflow-y-auto rounded-3xl border border-white/10 bg-[#0b1020]/85 p-4 backdrop-blur">
             {error && (
               <p className="mb-3 rounded-xl bg-red-500/15 p-2 text-center text-sm text-red-200">{error}</p>
             )}
 
-            {roomKind && insidePlace ? (
+            {roomKind && insidePlace && !panelOpen ? (
+              <div className="flex items-center justify-between gap-2">
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-extrabold">{insidePlace.name}</p>
+                  <p className="text-[11px] text-zinc-400">
+                    {roomLabel ? `${roomLabel} · ` : ""}👥 {herePeople.length + 1} here
+                    {liveMine && roomKind === "faculty" && " · 📚 a lecture of yours is on"}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setPanelOpen(true)}
+                  className="shrink-0 rounded-xl bg-amber-400 px-3 py-2 text-sm font-bold text-black"
+                >
+                  ▴ Things to do
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setInside(null);
+                    setPanelOpen(true);
+                  }}
+                  disabled={occupied}
+                  className="shrink-0 rounded-xl border border-white/20 px-3 py-2 text-sm disabled:opacity-40"
+                >
+                  Leave
+                </button>
+              </div>
+            ) : roomKind && insidePlace ? (
               <>
                 <div className="flex items-center justify-between gap-3">
                   <div>
                     <p className="text-xs font-semibold tracking-[0.2em] text-emerald-300">INSIDE</p>
                     <p className="text-lg font-extrabold">{insidePlace.name}</p>
+                    {roomLabel && <p className="text-xs text-zinc-400">{roomLabel}</p>}
                     {roomKind === "faculty" && enrollment.department && (
                       <p className="text-xs text-zinc-400">
                         {enrollment.faculty} · Department of {enrollment.department}
                       </p>
                     )}
                   </div>
-                  <button
-                    type="button"
-                    onClick={() => setInside(null)}
-                    disabled={occupied}
-                    className="rounded-xl border border-white/20 px-4 py-2 text-sm font-semibold disabled:opacity-40"
-                  >
-                    Leave
-                  </button>
+                  <span className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setPanelOpen(false)}
+                      className="rounded-xl border border-white/20 px-3 py-2 text-sm"
+                      aria-label="Hide panel"
+                    >
+                      ▾
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setInside(null);
+                        setPanelOpen(true);
+                      }}
+                      disabled={occupied}
+                      className="rounded-xl border border-white/20 px-4 py-2 text-sm font-semibold disabled:opacity-40"
+                    >
+                      Leave
+                    </button>
+                  </span>
                 </div>
                 {roomKind === "clubhouse" && (
                   <button
@@ -1358,6 +1501,8 @@ export default function GameClient({ game }: { game: GameState }) {
           blockedReason={
             selectedPerson.location_kind !== s.location_kind
               ? `${selectedPerson.name} is at another place. Go there to meet them.`
+              : !selectedPerson.same_room
+                ? `${selectedPerson.name} is in Room ${selectedPerson.room} here.`
               : !atPlace
                 ? `Go to ${here?.name ?? "the same place"} to meet ${selectedPerson.name}.`
                 : asleep
@@ -1400,6 +1545,13 @@ export default function GameClient({ game }: { game: GameState }) {
             setSelected(null);
             setSocial({ tab: "friends", giftTo: selectedPerson.id });
           }}
+          onJoinRoom={
+            selectedPerson.friend &&
+            !selectedPerson.same_room &&
+            selectedPerson.location_kind === s.location_kind
+              ? () => joinRoom(selectedPerson)
+              : undefined
+          }
           onInteract={(kind) => interact(selectedPerson, kind)}
           onBlock={() => block(selectedPerson)}
           onReport={(reason, details) => report(selectedPerson, reason, details)}

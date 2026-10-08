@@ -67,6 +67,30 @@ export async function interactAction(
   return { dynamic: data as GameDynamic & { thrown_out?: boolean } };
 }
 
+/** Move into a friend's room at the same place (or visit their hostel room). */
+export async function joinFriendRoomAction(friendId: string): Promise<{ dynamic?: GameDynamic; error?: string }> {
+  const userId = await requirePlayerId();
+  const t = uuid.safeParse(friendId);
+  if (!t.success) return { error: "That is not possible." };
+  const admin = createAdminClient();
+  const { data, error } = await admin.rpc("join_friend_room", { p_user_id: userId, p_friend: t.data });
+  if (error) {
+    if (error.message.includes("room full")) return { error: "That room is full right now." };
+    if (error.message.includes("not friends")) return { error: "Only friends can join each other." };
+    return { error: friendly("join_friend_room", error.message) };
+  }
+  return { dynamic: data as GameDynamic };
+}
+
+/** Show or hide yourself from strangers nearby (friends always see you). */
+export async function setShareLocationAction(share: boolean): Promise<{ dynamic?: GameDynamic; error?: string }> {
+  const userId = await requirePlayerId();
+  const admin = createAdminClient();
+  const { data, error } = await admin.rpc("set_share_location", { p_user_id: userId, p_share: share === true });
+  if (error) return { error: friendly("set_share_location", error.message) };
+  return { dynamic: data as GameDynamic };
+}
+
 export async function sayAction(text: string): Promise<{ eventId?: number; error?: string }> {
   const userId = await requirePlayerId();
   const parsed = z.string().trim().min(1).max(140).safeParse(text);

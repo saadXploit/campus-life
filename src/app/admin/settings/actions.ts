@@ -15,6 +15,10 @@ const schema = z.object({
   transfer_max_naira: z.coerce.number().int().min(1).max(100_000_000),
   transfer_daily_max_naira: z.coerce.number().int().min(1).max(1_000_000_000),
   transfer_daily_count: z.coerce.number().int().min(1).max(1000),
+  room_capacity: z.coerce.number().int().min(2).max(200),
+  visible_strangers: z.coerce.number().int().min(0).max(50),
+  visible_friends: z.coerce.number().int().min(1).max(100),
+  presence_seconds: z.coerce.number().int().min(30).max(600),
 });
 
 export async function saveSettingsAction(formData: FormData): Promise<void> {
@@ -31,6 +35,10 @@ export async function saveSettingsAction(formData: FormData): Promise<void> {
     transfer_max_kobo: v.transfer_max_naira * 100,
     transfer_daily_max_kobo: v.transfer_daily_max_naira * 100,
     transfer_daily_count: v.transfer_daily_count,
+    room_capacity: v.room_capacity,
+    visible_strangers: v.visible_strangers,
+    visible_friends: v.visible_friends,
+    presence_seconds: v.presence_seconds,
   };
 
   const admin = createAdminClient();

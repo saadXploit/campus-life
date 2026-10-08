@@ -20,6 +20,7 @@ export default function PlayerCard({
   onAddFriend,
   onMessage,
   onGift,
+  onJoinRoom,
 }: {
   person: Person;
   placeName: string | null;
@@ -34,6 +35,8 @@ export default function PlayerCard({
   onAddFriend: () => void;
   onMessage: () => void;
   onGift: () => void;
+  /** Set when they are a friend in another room of the same place. */
+  onJoinRoom?: () => void;
   onBlock: () => void;
   onReport: (reason: string, details: string) => Promise<string | null>;
   onClose: () => void;
@@ -115,7 +118,18 @@ export default function PlayerCard({
               )}
             </div>
             {blockedReason ? (
-              <p className="mt-4 rounded-xl bg-white/5 p-3 text-center text-sm text-zinc-300">{blockedReason}</p>
+              <div className="mt-4 rounded-xl bg-white/5 p-3 text-center text-sm text-zinc-300">
+                <p>{blockedReason}</p>
+                {onJoinRoom && (
+                  <button
+                    type="button"
+                    onClick={onJoinRoom}
+                    className="mt-2 rounded-xl bg-emerald-500 px-4 py-2 text-sm font-bold text-black"
+                  >
+                    🚪 Join their room
+                  </button>
+                )}
+              </div>
             ) : interactions.length === 0 ? (
               <p className="mt-4 rounded-xl bg-white/5 p-3 text-center text-sm text-zinc-300">
                 Nothing to do together here.

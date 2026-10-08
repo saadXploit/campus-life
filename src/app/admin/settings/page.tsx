@@ -107,6 +107,30 @@ export default async function SettingsPage({
             </label>
           </section>
 
+          <section className="space-y-4 rounded-2xl border border-white/10 bg-white/5 p-5">
+            <h2 className="text-lg font-bold">Crowds</h2>
+            <p className="text-sm text-zinc-400">
+              Busy places split into rooms. Players always see their active friends, plus a few nearby
+              strangers who share their location. Lower these numbers if the game gets slow or busy.
+            </p>
+            <label className="block text-sm text-zinc-300">
+              People per room before a new room opens
+              <input name="room_capacity" type="number" min={2} max={200} defaultValue={num(cfg, "room_capacity", 25)} className={field} />
+            </label>
+            <label className="block text-sm text-zinc-300">
+              Strangers each player can see
+              <input name="visible_strangers" type="number" min={0} max={50} defaultValue={num(cfg, "visible_strangers", 10)} className={field} />
+            </label>
+            <label className="block text-sm text-zinc-300">
+              Friends each player can see
+              <input name="visible_friends" type="number" min={1} max={100} defaultValue={num(cfg, "visible_friends", 30)} className={field} />
+            </label>
+            <label className="block text-sm text-zinc-300">
+              Seconds without activity before a player stops showing as online
+              <input name="presence_seconds" type="number" min={30} max={600} defaultValue={num(cfg, "presence_seconds", 60)} className={field} />
+            </label>
+          </section>
+
           <button type="submit" className="w-full rounded-xl bg-red-500 px-4 py-3 text-sm font-bold text-white">
             Save settings
           </button>
