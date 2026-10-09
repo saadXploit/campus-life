@@ -36,7 +36,7 @@ export default async function WelcomePage() {
 
   // The one next thing to do, depending on where the application is.
   let step: JourneyStep = "choose";
-  let next = { title: "Pick your campus", text: "Compare the 10 universities, then apply.", href: "/universities", cta: "Explore universities" };
+  let next = { title: "Pick your campus", text: "Federal, state or private: compare the three, then apply.", href: "/universities", cta: "Explore universities" };
   if (application?.status === "exam_pending" || application?.status === "exam_in_progress") {
     step = "exam";
     next = {

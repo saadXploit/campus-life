@@ -12,6 +12,22 @@ export async function proxy(request: NextRequest) {
   const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
   if (!url || !key) return NextResponse.next({ request });
 
+  // If Supabase does not recognise our sign-in return address, it sends the login code
+  // to the Site URL (the home page) instead. Pass it on to the sign-in step so the
+  // player still ends up signed in.
+  const { pathname, searchParams } = request.nextUrl;
+  if (
+    searchParams.has("code") &&
+    pathname !== "/auth/callback" &&
+    pathname !== "/admin/callback" &&
+    !pathname.startsWith("/api/") &&
+    !pathname.startsWith("/shop/")
+  ) {
+    const target = request.nextUrl.clone();
+    target.pathname = "/auth/callback";
+    return NextResponse.redirect(target);
+  }
+
   let response = NextResponse.next({ request });
 
   const supabase = createServerClient(url, key, {

@@ -31,7 +31,7 @@ const types = [
 
 const steps = [
   { icon: "🧑🏾‍🎓", title: "Create your student", text: "Name, look, background and what you love." },
-  { icon: "🏛️", title: "Pick your campus", text: "10 universities: federal, state and private." },
+  { icon: "🏛️", title: "Pick your campus", text: "Federal, State or Private Universities of Nigeria." },
   { icon: "📝", title: "Apply", text: "Choose a course and rank your universities." },
   { icon: "⏱️", title: "Sit the screening", text: "A short timed exam decides your admission." },
   { icon: "🎉", title: "Move in", text: "Get your hostel room and start living it." },
@@ -155,7 +155,7 @@ export default function Landing({ signedIn }: { signedIn: boolean }) {
         <div className="mx-auto max-w-5xl">
           <h2 className="text-center text-3xl font-extrabold sm:text-4xl">Federal, state or private?</h2>
           <p className="mx-auto mt-3 max-w-xl text-center text-zinc-400">
-            10 universities, each with its own fees, pressure and personality.
+            Three universities, each with its own fees, pressure and personality.
           </p>
           <div className="mt-10 grid gap-4 md:grid-cols-3">
             {types.map((t) => (
