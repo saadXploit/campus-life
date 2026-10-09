@@ -51,6 +51,14 @@ export async function GET(request: Request, { params }: { params: Promise<{ feed
       fn = "get_bills";
       args = { p_user_id: userId };
       break;
+    case "event":
+      fn = "get_life_event";
+      args = { p_user_id: userId };
+      break;
+    case "rankings":
+      fn = "get_rankings";
+      args = { p_user_id: userId };
+      break;
     case "messages": {
       const conversation = uuid.safeParse(url.searchParams.get("c"));
       const after = url.searchParams.get("after");

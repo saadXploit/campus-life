@@ -48,6 +48,8 @@ A multiplayer university life-simulation game. Next.js (App Router) + TypeScript
 
 - The phone: a 📱 phone on the game screen holds Chats, Friends (with People you may know), Dating, Shop, Academics, Bank, Fees, Jobs and Alerts, with badges; closing an app returns to the phone. The ☰ menu keeps only settings.
 
+- Stage 20 (friends together, rankings, Naija life): friends at the same place always share a room (up to 10 over the normal size); a Rankings phone app (richest, top CGPA, most friends at your university); Naija life events every few hours with choices (black tax, NEPA, allowance, fake credit alert, malaria, cracked screen, jollof party, handouts).
+
 The long-term goal is an explorable 3D multiplayer campus. All game rules live in the database (Postgres functions), so the 3D client can be added without rewriting them.
 
 ## How the game stays fair

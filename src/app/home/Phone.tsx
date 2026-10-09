@@ -4,7 +4,17 @@ import { motion } from "framer-motion";
 import { formatClock } from "@/lib/game/time";
 import { formatNaira } from "@/lib/money";
 
-export type PhoneApp = "chats" | "friends" | "dating" | "shop" | "academics" | "bank" | "fees" | "jobs" | "alerts";
+export type PhoneApp =
+  | "chats"
+  | "friends"
+  | "dating"
+  | "shop"
+  | "academics"
+  | "bank"
+  | "fees"
+  | "jobs"
+  | "rankings"
+  | "alerts";
 
 type AppTile = { id: PhoneApp; label: string; icon: string; color: string; badge?: number };
 
@@ -63,6 +73,7 @@ export default function Phone({
     { id: "bank", label: "Bank", icon: "🏦", color: "#059669" },
     { id: "fees", label: "Fees", icon: "🧾", color: "#dc2626", badge: badges.fees },
     { id: "jobs", label: "Jobs", icon: "💼", color: "#7c3aed" },
+    { id: "rankings", label: "Rankings", icon: "🏆", color: "#ca8a04" },
     { id: "alerts", label: "Alerts", icon: "🔔", color: "#475569", badge: badges.alerts },
   ];
   const dock = apps.filter((a) => a.id === "chats" || a.id === "friends" || a.id === "shop");

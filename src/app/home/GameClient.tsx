@@ -57,6 +57,9 @@ import AcademicsPanel from "./AcademicsPanel";
 import AdCard from "./AdCard";
 import JobsPanel from "./JobsPanel";
 import Phone, { type PhoneApp } from "./Phone";
+import LifeEventCard from "./LifeEventCard";
+import RankingsPanel from "./RankingsPanel";
+import type { LifeEvent } from "@/lib/game/life";
 import MiniMap from "@/components/MiniMap";
 import { worldToMap } from "@/lib/game/minimap";
 import FeesPanel from "./FeesPanel";
@@ -75,6 +78,7 @@ import WalletPanel from "./WalletPanel";
 import {
   performActivityAction,
   refreshGameAction,
+  resolveLifeEventAction,
   stopActivityAction,
   travelAction,
   wakeUpAction,
@@ -430,6 +434,11 @@ export default function GameClient({ game }: { game: GameState }) {
   const [showShop, setShowShop] = useState(false);
   // The phone: chats, friends, dating, shop, academics, bank, fees, jobs, alerts.
   const [phoneOpen, setPhoneOpen] = useState(false);
+  const [showRankings, setShowRankings] = useState(false);
+  // Naija life events: checked every couple of minutes; one open at a time.
+  const [lifeEvent, setLifeEvent] = useState<LifeEvent | null>(null);
+  const [lifeResult, setLifeResult] = useState<string | null>(null);
+  const [lifePending, setLifePending] = useState(false);
   // An app opened from the phone goes back to the phone when it closes.
   const backToPhone = useRef(false);
   // Where you are on the mini-map while walking outdoors (0-100 campus map).
@@ -485,9 +494,14 @@ export default function GameClient({ game }: { game: GameState }) {
   useEffect(() => {
     let live = true;
     const load = () =>
-      Promise.all([fetchFeed<Academics>("academics"), fetchFeed<Bills>("bills")]).then(([a, b]) => {
+      Promise.all([
+        fetchFeed<Academics>("academics"),
+        fetchFeed<Bills>("bills"),
+        fetchFeed<{ event: LifeEvent | null }>("event"),
+      ]).then(([a, b, e]) => {
         if (live && a) setAcademics(a);
         if (live && b) setBills(b);
+        if (live && e?.event) setLifeEvent((cur) => cur ?? e.event);
       });
     const first = setTimeout(load, 200);
     const timer = setInterval(load, 120_000);
@@ -1110,6 +1124,7 @@ export default function GameClient({ game }: { game: GameState }) {
       setShowFees(true);
       void fetchFeed<Bills>("bills").then((b) => b && setBills(b));
     } else if (app === "jobs") setShowJobs(true);
+    else if (app === "rankings") setShowRankings(true);
     else if (app === "alerts") setPanel("notifications");
   }
 
@@ -1118,6 +1133,22 @@ export default function GameClient({ game }: { game: GameState }) {
     if (!backToPhone.current) return;
     backToPhone.current = false;
     setPhoneOpen(true);
+  }
+
+  function chooseLife(key: string) {
+    if (!lifeEvent) return;
+    setLifePending(true);
+    startTransition(async () => {
+      const r = await resolveLifeEventAction(lifeEvent.id, key);
+      setLifePending(false);
+      if (!r.dynamic) {
+        setError(r.error ?? "That did not work.");
+        setLifeEvent(null);
+        return;
+      }
+      apply({ dynamic: r.dynamic });
+      setLifeResult(r.dynamic.result ?? "Done.");
+    });
   }
 
   /** Leave whatever you are doing right now. */
@@ -2179,6 +2210,30 @@ export default function GameClient({ game }: { game: GameState }) {
           </div>
         );
       })()}
+
+      {showRankings && (
+        <RankingsPanel
+          university={university.name}
+          onClose={() => {
+            setShowRankings(false);
+            backFromApp();
+          }}
+        />
+      )}
+
+      {lifeEvent && !asleep && (
+        <LifeEventCard
+          event={lifeEvent}
+          balance={dyn.balance_kobo}
+          result={lifeResult}
+          pending={lifePending}
+          onChoose={chooseLife}
+          onDone={() => {
+            setLifeEvent(null);
+            setLifeResult(null);
+          }}
+        />
+      )}
 
       {phoneOpen && (
         <Phone

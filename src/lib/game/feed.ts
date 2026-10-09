@@ -3,7 +3,7 @@
  * These run alongside the player's own actions instead of queueing in front of them.
  * Returns null on any failure (the next check simply tries again).
  */
-export async function fetchFeed<T>(feed: "snapshot" | "badges" | "academics" | "bills" | "messages", params: Record<string, string | number | null> = {}): Promise<T | null> {
+export async function fetchFeed<T>(feed: "snapshot" | "badges" | "academics" | "bills" | "event" | "rankings" | "messages", params: Record<string, string | number | null> = {}): Promise<T | null> {
   const qs = new URLSearchParams();
   for (const [k, v] of Object.entries(params)) if (v !== null && v !== undefined) qs.set(k, String(v));
   try {

@@ -21,6 +21,8 @@ const ERRORS: Record<string, string> = {
   "unknown location": "That place does not exist.",
   blocked: "This account cannot play right now.",
   curfew: "Curfew! The gate is locked and you cannot pay the gate fine.",
+  "event: gone": "That moment has passed.",
+  "event: bad choice": "That choice is not available.",
 };
 
 async function call(fn: string, args: Record<string, unknown>): Promise<ActionResult> {
@@ -58,6 +60,19 @@ export async function wakeUpAction(): Promise<ActionResult> {
 export async function refreshGameAction(): Promise<ActionResult> {
   const userId = await requirePlayerId();
   return call("get_game_dynamic", { p_user_id: userId });
+}
+
+/** Answer a Naija life event (black tax, NEPA...). */
+export async function resolveLifeEventAction(
+  eventId: number,
+  choice: string
+): Promise<{ dynamic?: GameDynamic & { result?: string }; error?: string }> {
+  const userId = await requirePlayerId();
+  if (!z.number().int().positive().safeParse(eventId).success || !/^[a-z_]{2,20}$/.test(choice)) {
+    return { error: "That choice is not available." };
+  }
+  const r = await call("resolve_life_event", { p_user_id: userId, p_event: eventId, p_choice: choice });
+  return r as { dynamic?: GameDynamic & { result?: string }; error?: string };
 }
 
 /** Stop whatever you are doing (eating, playing, studying, a lecture, an exam, work or sleep). */
