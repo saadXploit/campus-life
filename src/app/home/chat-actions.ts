@@ -3,7 +3,7 @@
 import { z } from "zod";
 import { requirePlayerId } from "@/lib/auth/guards";
 import type { GameDynamic } from "@/lib/game/gameTypes";
-import type { ChatView, SocialBadges, SocialData } from "@/lib/game/social";
+import type { ChatView, SocialBadges, SocialData, Suggestions } from "@/lib/game/social";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 // Friends, chats, dating and gifts. Each action is one database call that checks
@@ -17,6 +17,7 @@ const ERRORS: Record<string, string> = {
   "pick 1 to 29 friends": "Pick between 1 and 29 friends.",
   "group full": "That group is full (30 people).",
   "too many friends": "You have reached the friend limit.",
+  "too many requests today": "You have sent a lot of friend requests today. Try again tomorrow.",
   "unknown player": "That student could not be found.",
   "no request": "That request is no longer there.",
   "dating off": "Turn on dating first.",
@@ -164,4 +165,18 @@ export async function reportMessageAction(messageId: number, reason: string, det
   const r = reasons.safeParse(reason);
   if (!z.number().int().positive().safeParse(messageId).success || !r.success) return { error: "Please pick a reason." };
   return rpc<number>("report_message", { p_message: messageId, p_reason: r.data, p_details: details.slice(0, 300) });
+}
+
+/** People you may know (up to 10, each with a reason). */
+export async function suggestionsAction() {
+  return rpc<Suggestions>("get_suggestions", {});
+}
+
+export async function dismissSuggestionAction(targetId: string) {
+  if (!uuid.safeParse(targetId).success) return bad;
+  return rpc<null>("dismiss_suggestion", { p_target: targetId });
+}
+
+export async function setDiscoverableAction(on: boolean) {
+  return rpc<boolean>("set_discoverable", { p_on: on === true });
 }

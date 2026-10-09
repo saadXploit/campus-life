@@ -56,6 +56,7 @@ import { formatNaira } from "@/lib/money";
 import AcademicsPanel from "./AcademicsPanel";
 import AdCard from "./AdCard";
 import JobsPanel from "./JobsPanel";
+import Phone, { type PhoneApp } from "./Phone";
 import MiniMap from "@/components/MiniMap";
 import { worldToMap } from "@/lib/game/minimap";
 import FeesPanel from "./FeesPanel";
@@ -380,7 +381,6 @@ export default function GameClient({ game }: { game: GameState }) {
   const [inside, setInside] = useState<string | null>(
     game.state.asleep_since && hasInterior(game.state.location_kind) ? game.state.location_kind : null
   );
-  const [pending, setPending] = useState<string | null>(null);
   const [entering, setEntering] = useState(false);
   const [waking, setWaking] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -428,6 +428,10 @@ export default function GameClient({ game }: { game: GameState }) {
   // Shop items: what you wear and drive, the shop, driving and lifts.
   const [style, setStyle] = useState<Record<string, string>>(game.player.style ?? {});
   const [showShop, setShowShop] = useState(false);
+  // The phone: chats, friends, dating, shop, academics, bank, fees, jobs, alerts.
+  const [phoneOpen, setPhoneOpen] = useState(false);
+  // An app opened from the phone goes back to the phone when it closes.
+  const backToPhone = useRef(false);
   // Where you are on the mini-map while walking outdoors (0-100 campus map).
   const [mapPos, setMapPos] = useState<{ mx: number; my: number } | null>(null);
   // School fees and rent: checked with academics, and after paying.
@@ -647,7 +651,8 @@ export default function GameClient({ game }: { game: GameState }) {
   const asleep = asleepNow;
   const busyUntil = s.busy_until ? Date.parse(s.busy_until) : 0;
   const busySlug = busyUntil > now ? s.busy_activity : null;
-  const currentSlug = pending ?? busySlug;
+  // Taps update the state straight away, so what you are doing is simply what is running.
+  const currentSlug = busySlug;
   const current: GameActivity | null = currentSlug
     ? (activities.find((a) => a.slug === currentSlug) ??
       academicActivity(currentSlug, s.location_kind) ??
@@ -680,7 +685,10 @@ export default function GameClient({ game }: { game: GameState }) {
   const hour = lagosHour(now);
   const night = lightingFor(hour).lamp;
 
-  const herePeople = people.filter((p) => p.same_room);
+  // Friends first, so they get the seats nearest you (across your table in the cafeteria).
+  const herePeople = people
+    .filter((p) => p.same_room)
+    .sort((a, b) => Number(b.friend) - Number(a.friend) || b.bond - a.bond || a.id.localeCompare(b.id));
   // Friends at this place but in another of its rooms.
   const friendsElsewhereHere = people.filter(
     (p) => p.friend && !p.same_room && p.location_kind === s.location_kind
@@ -836,12 +844,23 @@ export default function GameClient({ game }: { game: GameState }) {
 
   function doAcademic(kind: "lecture" | "study" | "exam", code: string) {
     setError(null);
-    setPending(`${kind}:${code}`);
+    // Start straight away (same lengths and energy as the server); undo if it says no.
+    const t = serverNowMs(skewRef);
+    const minutes = kind === "study" ? (s.location_kind === "library" ? 3 : 4) : 5;
+    const cost = kind === "lecture" ? 5 : kind === "study" ? 6 : 8;
+    const undo = optimistic((st) => ({
+      busy_until: new Date(t + minutes * 60_000).toISOString(),
+      busy_activity: `${kind}:${code}`,
+      energy: Math.max(0, st.energy - cost),
+    }));
+    setNow(t);
     startTransition(async () => {
       const fn = kind === "lecture" ? attendLectureAction : kind === "study" ? studyAction : writeExamAction;
       const ok = apply(await fn(code));
-      setPending(null);
-      if (!ok) return;
+      if (!ok) {
+        undo();
+        return;
+      }
       refreshAcademics();
       setToast([
         kind === "lecture" ? `📚 Attended ${code}` : kind === "study" ? `📖 +1 study · ${code}` : `📝 ${code} exam written`,
@@ -919,12 +938,19 @@ export default function GameClient({ game }: { game: GameState }) {
   function startOuting(a: GameActivity, friendIds: string[], hostPays: boolean) {
     setError(null);
     setOutingPending(true);
-    setPending(a.slug);
+    setOutingFor(null);
+    const t = serverNowMs(skewRef);
+    const undo = optimistic((st) => ({
+      busy_until: new Date(t + Number(a.duration_minutes) * 60_000).toISOString(),
+      busy_activity: a.slug,
+      energy: Math.max(0, Math.min(100, st.energy + a.energy_delta)),
+    }));
+    setNow(t);
     startTransition(async () => {
       const r = await createOutingAction(a.slug, friendIds, hostPays);
       setOutingPending(false);
-      setPending(null);
       if (!r.dynamic) {
+        undo();
         setError(r.error ?? "The invitation was not sent.");
         return;
       }
@@ -1071,6 +1097,27 @@ export default function GameClient({ game }: { game: GameState }) {
     if (!until || !workBusy(s.busy_activity ?? "") || paidCheck.current === until) return;
     paidCheck.current = until;
     setTimeout(() => startTransition(async () => void apply(await refreshGameAction())), 2000);
+  }
+
+  function openApp(app: PhoneApp) {
+    setPhoneOpen(false);
+    backToPhone.current = true;
+    if (app === "chats" || app === "friends" || app === "dating") setSocial({ tab: app });
+    else if (app === "shop") setShowShop(true);
+    else if (app === "academics") setShowAcademics(true);
+    else if (app === "bank") setPanel("wallet");
+    else if (app === "fees") {
+      setShowFees(true);
+      void fetchFeed<Bills>("bills").then((b) => b && setBills(b));
+    } else if (app === "jobs") setShowJobs(true);
+    else if (app === "alerts") setPanel("notifications");
+  }
+
+  /** Closing an app that was opened from the phone shows the phone again. */
+  function backFromApp() {
+    if (!backToPhone.current) return;
+    backToPhone.current = false;
+    setPhoneOpen(true);
   }
 
   /** Leave whatever you are doing right now. */
@@ -1601,11 +1648,11 @@ export default function GameClient({ game }: { game: GameState }) {
               </div>
               <button
                 type="button"
-                onClick={() => setSocial({ tab: "chats" })}
-                aria-label="Chats and friends"
+                onClick={() => setPhoneOpen(true)}
+                aria-label="Phone: chats, friends, dating, shop and academics"
                 className="pointer-events-auto relative rounded-2xl bg-black/45 px-3 py-3 text-lg backdrop-blur"
               >
-                💬
+                📱
                 {badges && badges.unread_chats + badges.friend_requests + badges.dating_asks > 0 && (
                   <span className="absolute -right-1 -top-1 flex h-5 min-w-5 items-center justify-center rounded-full bg-red-500 px-1 text-[11px] font-bold">
                     {Math.min(9, badges.unread_chats + badges.friend_requests + badges.dating_asks)}
@@ -1708,52 +1755,12 @@ export default function GameClient({ game }: { game: GameState }) {
                 type="button"
                 onClick={() => {
                   setMenu(false);
-                  setPanel("wallet");
+                  setPhoneOpen(true);
                 }}
                 className="block w-full rounded-xl px-3 py-2 text-left hover:bg-white/10"
               >
-                💰 Wallet
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setMenu(false);
-                  setShowAcademics(true);
-                }}
-                className="block w-full rounded-xl px-3 py-2 text-left hover:bg-white/10"
-              >
-                📚 Academics
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setMenu(false);
-                  setShowJobs(true);
-                }}
-                className="block w-full rounded-xl px-3 py-2 text-left hover:bg-white/10"
-              >
-                💼 Jobs
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setMenu(false);
-                  setShowFees(true);
-                  void fetchFeed<Bills>("bills").then((b) => b && setBills(b));
-                }}
-                className="block w-full rounded-xl px-3 py-2 text-left hover:bg-white/10"
-              >
-                🧾 Fees & rent
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  setMenu(false);
-                  setShowShop(true);
-                }}
-                className="block w-full rounded-xl px-3 py-2 text-left hover:bg-white/10"
-              >
-                🛍️ Shop
+                📱 Phone
+                <span className="block text-[11px] text-zinc-500">Chats, friends, shop, academics, bank</span>
               </button>
               {myCar && (
                 <button
@@ -1768,16 +1775,6 @@ export default function GameClient({ game }: { game: GameState }) {
                   🚗 Drive your {myCar.name}
                 </button>
               )}
-              <button
-                type="button"
-                onClick={() => {
-                  setMenu(false);
-                  setSocial({ tab: "friends" });
-                }}
-                className="block w-full rounded-xl px-3 py-2 text-left hover:bg-white/10"
-              >
-                👥 Friends & dating
-              </button>
               <button
                 type="button"
                 onClick={() => {
@@ -2096,6 +2093,7 @@ export default function GameClient({ game }: { game: GameState }) {
           start={social}
           onClose={() => {
             setSocial(null);
+            backFromApp();
             refreshBadges();
           }}
           onChanged={refreshBadges}
@@ -2103,7 +2101,14 @@ export default function GameClient({ game }: { game: GameState }) {
         />
       )}
       {showAcademics && (
-        <AcademicsPanel academics={academics} nowMs={now} onClose={() => setShowAcademics(false)} />
+        <AcademicsPanel
+          academics={academics}
+          nowMs={now}
+          onClose={() => {
+            setShowAcademics(false);
+            backFromApp();
+          }}
+        />
       )}
 
       {rideOffer && !asleep && (
@@ -2175,6 +2180,26 @@ export default function GameClient({ game }: { game: GameState }) {
         );
       })()}
 
+      {phoneOpen && (
+        <Phone
+          name={game.player.name}
+          hour={hour}
+          dateLabel={lagosDateLabel(now)}
+          balance={dyn.balance_kobo}
+          primary={university.primary_color}
+          secondary={university.secondary_color}
+          badges={{
+            chats: badges?.unread_chats ?? 0,
+            friends: badges?.friend_requests ?? 0,
+            dating: badges?.dating_asks ?? 0,
+            alerts: dyn.unread,
+            fees: unpaid(bills).length,
+          }}
+          onOpen={openApp}
+          onClose={() => setPhoneOpen(false)}
+        />
+      )}
+
       {showFees && (
         <FeesPanel
           bills={bills}
@@ -2182,14 +2207,20 @@ export default function GameClient({ game }: { game: GameState }) {
           nowMs={now}
           onBills={setBills}
           onDynamic={(d) => apply({ dynamic: d })}
-          onClose={() => setShowFees(false)}
+          onClose={() => {
+            setShowFees(false);
+            backFromApp();
+          }}
         />
       )}
 
       {showShop && (
         <ShopPanel
           balance={dyn.balance_kobo}
-          onClose={() => setShowShop(false)}
+          onClose={() => {
+            setShowShop(false);
+            backFromApp();
+          }}
           onStyle={setStyle}
           onBought={(r) => {
             apply({ dynamic: r });
@@ -2239,7 +2270,10 @@ export default function GameClient({ game }: { game: GameState }) {
           onApply={applyJob}
           onQuit={quitJob}
           onStartShift={startShift}
-          onClose={() => setShowJobs(false)}
+          onClose={() => {
+            setShowJobs(false);
+            backFromApp();
+          }}
         />
       )}
 
@@ -2311,13 +2345,19 @@ export default function GameClient({ game }: { game: GameState }) {
       {panel === "wallet" && (
         <WalletPanel
           balance={dyn.balance_kobo}
-          onClose={() => setPanel(null)}
+          onClose={() => {
+            setPanel(null);
+            backFromApp();
+          }}
           onSent={() => startTransition(async () => void apply(await refreshGameAction()))}
         />
       )}
       {panel === "notifications" && (
         <NotificationsPanel
-          onClose={() => setPanel(null)}
+          onClose={() => {
+            setPanel(null);
+            backFromApp();
+          }}
           onOpened={() => setDyn((d) => ({ ...d, unread: 0 }))}
         />
       )}

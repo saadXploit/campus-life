@@ -31,7 +31,11 @@ import {
   sendMessageAction,
   setConversationMutedAction,
   setDatingAction,
+  dismissSuggestionAction,
+  setDiscoverableAction,
+  suggestionsAction,
 } from "./chat-actions";
+import type { Suggestions } from "@/lib/game/social";
 import { searchPlayersAction, type PlayerResult } from "./wallet-actions";
 
 export type SocialStart = { tab?: "chats" | "friends" | "dating"; conversationId?: string; giftTo?: string };
@@ -437,6 +441,8 @@ export default function SocialPanel({
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [query, setQuery] = useState("");
+  // People you may know: loaded when the Friends tab opens.
+  const [sugg, setSugg] = useState<Suggestions | null>(null);
   const [results, setResults] = useState<PlayerResult[]>([]);
   const [groupMode, setGroupMode] = useState(false);
   const [groupTitle, setGroupTitle] = useState("");
@@ -473,6 +479,38 @@ export default function SocialPanel({
       else if (ok) setNotice(ok);
       await load();
       onChanged();
+    });
+  }
+
+  const loadSuggestions = useCallback(async () => {
+    const r = await suggestionsAction();
+    if (r.data) setSugg(r.data);
+  }, []);
+
+  useEffect(() => {
+    if (tab !== "friends") return;
+    const t = setTimeout(() => void loadSuggestions(), 0);
+    return () => clearTimeout(t);
+  }, [tab, loadSuggestions]);
+
+  function addSuggested(id: string, name: string) {
+    setSugg((cur) => (cur ? { ...cur, suggestions: cur.suggestions.filter((x) => x.id !== id) } : cur));
+    act(() => friendRequestAction(id), `Friend request sent to ${name}`);
+  }
+
+  function hideSuggested(id: string) {
+    setSugg((cur) => (cur ? { ...cur, suggestions: cur.suggestions.filter((x) => x.id !== id) } : cur));
+    startTransition(async () => {
+      await dismissSuggestionAction(id);
+    });
+  }
+
+  function toggleDiscoverable() {
+    const next = !(sugg?.discoverable ?? true);
+    setSugg((cur) => (cur ? { ...cur, discoverable: next } : cur));
+    startTransition(async () => {
+      const r = await setDiscoverableAction(next);
+      if (r.error) setError(r.error);
     });
   }
 
@@ -727,6 +765,60 @@ export default function SocialPanel({
                 </div>
               )}
             </div>
+
+            {sugg && (
+              <div className="space-y-2">
+                <p className="text-xs font-semibold text-zinc-400">PEOPLE YOU MAY KNOW</p>
+                {sugg.suggestions.length === 0 && (
+                  <p className="rounded-xl bg-white/5 p-3 text-xs text-zinc-400">
+                    No suggestions yet. As more students join your university, people from your course, your hostel
+                    room and your friends&apos; friends will show up here. You can also search for someone by name above.
+                  </p>
+                )}
+                {sugg.suggestions.map((p) => (
+                  <div key={p.id} className="flex items-center justify-between gap-2 rounded-2xl border border-white/10 bg-white/5 p-3">
+                    <div className="min-w-0">
+                      <p className="truncate font-bold">{p.name}</p>
+                      <p className="truncate text-xs text-emerald-300">{p.reason}</p>
+                      <p className="truncate text-[11px] text-zinc-500">
+                        {p.level_year}00L · {p.course}
+                      </p>
+                    </div>
+                    <span className="flex shrink-0 gap-2">
+                      <button
+                        type="button"
+                        onClick={() => addSuggested(p.id, p.name)}
+                        className="rounded-lg bg-amber-400 px-3 py-1.5 text-xs font-bold text-black"
+                      >
+                        + Add
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => hideSuggested(p.id)}
+                        aria-label={`Not interested in ${p.name}`}
+                        title="Not interested"
+                        className="rounded-lg border border-white/15 px-2.5 py-1.5 text-xs text-zinc-400"
+                      >
+                        ✕
+                      </button>
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+            {sugg && (
+              <button
+                type="button"
+                onClick={toggleDiscoverable}
+                className="w-full rounded-xl bg-white/5 px-3 py-2 text-left text-xs text-zinc-300"
+              >
+                👀 Show me in other students&apos; suggestions:{" "}
+                <span className={sugg.discoverable ? "font-bold text-emerald-300" : "font-bold text-zinc-400"}>
+                  {sugg.discoverable ? "On" : "Off"}
+                </span>
+                <span className="block text-[11px] text-zinc-500">Tap to change. People can still find you by searching your name.</span>
+              </button>
+            )}
 
             <div className="space-y-2">
               <p className="text-xs font-semibold text-zinc-400">FRIENDS ({friends.length})</p>

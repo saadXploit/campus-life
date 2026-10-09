@@ -116,3 +116,18 @@ export function lastSeenLabel(online: boolean, iso: string | null, nowMs: number
   if (s < 86400) return `${Math.floor(s / 3600)}h ago`;
   return `${Math.floor(s / 86400)}d ago`;
 }
+
+/** A "people you may know" suggestion. */
+export type Suggestion = {
+  id: string;
+  name: string;
+  skin: number;
+  hair_style: number;
+  hair_color: number;
+  outfit: number;
+  level_year: number;
+  course: string;
+  reason: string;
+};
+
+export type Suggestions = { discoverable: boolean; suggestions: Suggestion[] };

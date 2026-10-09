@@ -44,6 +44,10 @@ A multiplayer university life-simulation game. Next.js (App Router) + TypeScript
 
 - Stage 18 (three universities): the game has three universities, Federal, State and Private Universities of Nigeria (the original campuses, renamed). Students, applications and records at the other seven moved to the one of the same type, keeping their course, level, grades, money, friends and chats; the seven are switched off, not deleted.
 
+- Stage 19 (people you may know): up to 10 friend suggestions with a reason (mutual friends, roommates, same course and level, people you hung out with, others at your university); a switch to stay out of suggestions; Not interested hides someone; blocked players never appear; 18+ and under-18 players are never suggested to each other; at most 20 new friend requests a day. Friends who join your meal sit across the table from you; lectures, study, exams and invites start instantly; /api/health for an uptime monitor.
+
+- The phone: a 📱 phone on the game screen holds Chats, Friends (with People you may know), Dating, Shop, Academics, Bank, Fees, Jobs and Alerts, with badges; closing an app returns to the phone. The ☰ menu keeps only settings.
+
 The long-term goal is an explorable 3D multiplayer campus. All game rules live in the database (Postgres functions), so the 3D client can be added without rewriting them.
 
 ## How the game stays fair

@@ -106,9 +106,10 @@ const GUEST_SPOTS: Record<string, Spot[]> = {
     { x: -1.8, y: 0, z: 0.2, heading: 0.9, pose: "idle" },
   ],
   cafeteria: [
+    // First seat: across the table from you (you sit at x -2, z 0.9 for a meal).
+    { x: -2, y: 0, z: -0.9, heading: 0, pose: "sit" },
     { x: 2, y: 0, z: 0.9, heading: PI, pose: "sit" },
     { x: 2, y: 0, z: -0.9, heading: 0, pose: "sit" },
-    { x: -2, y: 0, z: -0.9, heading: 0, pose: "sit" },
     { x: -0.6, y: 0, z: 3.1, heading: PI, pose: "sit" },
     { x: 0.6, y: 0, z: 3.1, heading: PI, pose: "sit" },
     { x: 3.6, y: 0, z: 2.4, heading: -0.8, pose: "idle" },
